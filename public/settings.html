@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Manage Profiles - Laleme</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body style="padding-bottom: 40px;">
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo-area" onclick="window.location.href='index.html'" style="cursor:pointer;">
+                <i class="ph-bold ph-arrow-left"></i>
+                <span data-i18n="back_dashboard">Back to Dashboard</span>
+            </div>
+        </header>
+
+        <div class="hero-section" style="text-align: left; padding: 20px 0;">
+            <h1 style="font-size: 2rem; margin-bottom: 4px;" data-i18n="settings_title">App Settings</h1>
+            <p style="color:var(--text-muted); font-size: 0.9rem;" data-i18n="settings_subtitle">Manage preferences and
+                family members.</p>
+        </div>
+
+        <!-- Section: General -->
+        <div class="settings-section" style="margin-bottom: 30px;">
+            <h3 class="section-title"
+                style="margin-bottom:12px; font-size:1rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;"
+                data-i18n="section_general">General</h3>
+
+            <!-- Language Switcher -->
+            <div class="bento-row-card" style="padding: 16px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="icon-btn-glass" style="cursor:default;"><i class="ph-fill ph-globe"></i></button>
+                    <div>
+                        <div style="font-weight:600;" data-i18n="language_label">Language</div>
+                        <div style="font-size:0.8rem; color:var(--text-muted);">Switch app language</div>
+                    </div>
+                </div>
+                <div class="segment-control">
+                    <div class="segment-option selected" id="lang-en" onclick="setLanguage('en')">EN</div>
+                    <div class="segment-option" id="lang-zh" onclick="setLanguage('zh')">中文</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section: Profiles -->
+        <div class="settings-section" style="margin-bottom: 30px;">
+            <h3 class="section-title"
+                style="margin-bottom:12px; font-size:1rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;"
+                data-i18n="section_profiles">Family Profiles</h3>
+
+            <div id="profiles-list" style="display: flex; flex-direction: column; gap: 16px;">
+                <!-- Injected via JS -->
+            </div>
+
+            <button id="btn-add-new" class="dashed-glass-btn">
+                <i class="ph-bold ph-plus"></i> <span data-i18n="btn_add_profile">Add New Profile</span>
+            </button>
+        </div>
+
+        <!-- Section: Account -->
+        <div class="settings-section">
+            <h3 class="section-title"
+                style="margin-bottom:12px; font-size:1rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;"
+                data-i18n="section_account">Account</h3>
+
+            <div class="bento-row-card" style="padding: 16px; cursor:pointer;" onclick="logout()">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="icon-btn-glass danger"
+                        style="background:rgba(239,68,68,0.1); border-color:rgba(239,68,68,0.2); color:#ef4444;"><i
+                            class="ph-bold ph-sign-out"></i></button>
+                    <div style="color:#ef4444; font-weight:600;" data-i18n="btn_sign_out">Sign Out</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal (Expanded) -->
+    <div id="edit-overlay" class="overlay hidden">
+        <div class="modal-card" style="max-height: 85vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3>Edit Profile</h3>
+                <span class="sub-text">Update details for <span id="edit-name-display"></span></span>
+            </div>
+
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:24px;">
+                <input type="hidden" id="edit-id">
+
+                <!-- Basic Info -->
+                <div class="input-group">
+                    <label>Nickname</label>
+                    <input type="text" id="edit-nickname" class="text-input" placeholder="e.g. Baby Q">
+                </div>
+
+                <div class="input-group">
+                    <label>Date of Birth</label>
+                    <input type="date" id="edit-dob" class="text-input">
+                </div>
+
+                <!-- Gender -->
+                <div class="input-group">
+                    <label>Gender</label>
+                    <div id="edit-gender-control" class="segment-control">
+                        <div class="segment-option selected" data-value="male">Male</div>
+                        <div class="segment-option" data-value="female">Female</div>
+                    </div>
+                </div>
+
+                <!-- Baby Options (Hidden by default) -->
+                <div id="edit-baby-section" class="hidden">
+                    <label class="section-label"
+                        style="display:block; margin-bottom:12px; color:var(--text-main); font-weight:600;">Baby
+                        Specifics</label>
+
+                    <div style="margin-bottom:16px;">
+                        <label style="font-size:0.8rem; color:var(--text-muted);">Feeding Method</label>
+                        <div class="grid-options" id="edit-baby-feeding">
+                            <div class="grid-option" data-value="breast">Breast</div>
+                            <div class="grid-option" data-value="bottle">Formula</div>
+                            <div class="grid-option" data-value="mixed">Mixed</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="font-size:0.8rem; color:var(--text-muted);">Current Stage</label>
+                        <div class="grid-options" id="edit-baby-stage">
+                            <div class="grid-option" data-value="newborn">Newborn</div>
+                            <div class="grid-option" data-value="solids">Solids</div>
+                            <div class="grid-option" data-value="weaning">Weaning</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Adult Options (Hidden by default) -->
+                <div id="edit-adult-section" class="hidden">
+                    <label class="section-label"
+                        style="display:block; margin-bottom:12px; color:var(--text-main); font-weight:600;">Health
+                        Factors</label>
+
+                    <div style="margin-bottom:16px;">
+                        <label style="font-size:0.8rem; color:var(--text-muted);">Conditions</label>
+                        <div class="tags-container" id="edit-adult-health">
+                            <div class="tag" data-value="ibs">IBS</div>
+                            <div class="tag" data-value="lactose">Lactose Intolerance</div>
+                            <div class="tag" data-value="celiac">Celiac</div>
+                            <div class="tag" data-value="none">None</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="font-size:0.8rem; color:var(--text-muted);">Medications</label>
+                        <div class="tags-container" id="edit-adult-meds">
+                            <div class="tag" data-value="probiotics">Probiotics</div>
+                            <div class="tag" data-value="antibiotics">Antibiotics</div>
+                            <div class="tag" data-value="laxatives">Laxatives</div>
+                            <div class="tag" data-value="fiber">Fiber Supp.</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <button id="btn-save-edit" class="primary-btn">Save Changes</button>
+            <button class="close-btn secondary-btn"
+                onclick="document.getElementById('edit-overlay').classList.add('hidden')">Cancel</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

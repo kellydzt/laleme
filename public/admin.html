@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Laleme</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        .admin-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .admin-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .admin-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .code-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .code-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 16px;
+            border-radius: 12px;
+        }
+
+        .code-display {
+            font-family: monospace;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            color: var(--accent-lime);
+        }
+
+        .status-badge {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .status-badge.used {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .status-badge.unused {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .back-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="admin-container">
+        <a href="/" class="back-link"><i class="ph-bold ph-arrow-left"></i> Back to App</a>
+
+        <div class="admin-header">
+            <div>
+                <h1>Admin Dashboard</h1>
+                <p style="color:var(--text-muted);">Manage users and invites</p>
+            </div>
+            <button id="btn-generate" class="primary-btn" style="width: auto; padding: 12px 24px; margin:0;">
+                <i class="ph-bold ph-plus"></i> Generate Code
+            </button>
+        </div>
+
+        <div class="admin-card">
+            <h3 style="margin-bottom: 16px;">Invite Codes</h3>
+            <div id="code-list" class="code-list">
+                <!-- Injected via JS -->
+                <div style="text-align:center; padding:20px;">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('auth_token');
+            const role = localStorage.getItem('user_role');
+
+            if (!token || role !== 'admin') {
+                window.location.href = '/';
+                return;
+            }
+
+            const headers = { 'Authorization': `Bearer ${token}` };
+            const listEl = document.getElementById('code-list');
+            const btnGenerate = document.getElementById('btn-generate');
+
+            async function loadInvites() {
+                try {
+                    const res = await fetch('/api/admin/invites', { headers });
+                    if (!res.ok) throw new Error("Failed");
+                    const json = await res.json();
+                    renderList(json.data);
+                } catch (err) {
+                    listEl.innerHTML = '<div style="color:red; text-align:center;">Failed to load invites</div>';
+                }
+            }
+
+            function renderList(invites) {
+                if (invites.length === 0) {
+                    listEl.innerHTML = '<div style="text-align:center; color:gray;">No invite codes generated yet.</div>';
+                    return;
+                }
+                listEl.innerHTML = invites.map(invite => `
+                    <div class="code-item">
+                        <div>
+                            <div class="code-display">${invite.code}</div>
+                            <div style="font-size:0.8rem; color:gray;">Created: ${new Date(invite.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <div class="status-badge ${invite.is_used ? 'used' : 'unused'}">
+                            ${invite.is_used ? 'USED' : 'ACTIVE'}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            btnGenerate.addEventListener('click', async () => {
+                btnGenerate.disabled = true;
+                btnGenerate.textContent = "Generating...";
+                try {
+                    const res = await fetch('/api/admin/invites', {
+                        method: 'POST',
+                        headers
+                    });
+                    if (res.ok) {
+                        loadInvites(); // Reload list
+                    } else {
+                        alert("Failed to generate code");
+                    }
+                } catch (err) {
+                    alert("Error generating code");
+                }
+                btnGenerate.textContent = "Generate Code";
+                btnGenerate.disabled = false;
+            });
+
+            loadInvites();
+        });
+    </script>
+</body>
+
+</html>

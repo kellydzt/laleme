@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Trend Analysis - Laleme</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .trends-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding-bottom: 40px;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .back-btn {
+            text-decoration: none;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+
+        /* Mode Toggle */
+        .controls-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .mode-toggle {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 4px;
+            display: flex;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 8px;
+            text-align: center;
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 600;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: var(--accent-purple);
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Dropdown */
+        .period-select-wrapper {
+            position: relative;
+        }
+
+        .period-select {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: white;
+            font-size: 1rem;
+            appearance: none;
+            font-family: inherit;
+        }
+
+        .period-select:focus {
+            outline: none;
+            border-color: var(--accent-purple);
+        }
+
+        .select-icon {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+
+        /* Heatmap Grid */
+        .heatmap-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .day-cell {
+            aspect-ratio: 1;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.5);
+            position: relative;
+        }
+
+        .day-cell.good {
+            background: var(--accent-lime);
+            color: black;
+            font-weight: 800;
+        }
+
+        .day-cell.warn {
+            background: #f59e0b;
+            color: black;
+            font-weight: 800;
+        }
+
+        .day-cell.bad {
+            background: #ef4444;
+            color: white;
+            font-weight: 800;
+        }
+
+        /* Insights */
+        .insight-card {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .insight-icon {
+            background: var(--card-bg);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-blue);
+            flex-shrink: 0;
+        }
+
+        /* Loading State */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="trends-container">
+        <div class="header-row">
+            <a href="/" class="back-btn"><i class="ph-bold ph-arrow-left"></i> <span
+                    data-i18n="back_home">Home</span></a>
+            <h2 style="font-size:1.2rem;" data-i18n="trends_title">Health Trends</h2>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls-card">
+            <div class="mode-toggle">
+                <button class="mode-btn active" id="mode-week" data-i18n="mode_weekly">Weekly</button>
+                <button class="mode-btn" id="mode-month" data-i18n="mode_monthly">Monthly</button>
+            </div>
+            <div class="period-select-wrapper">
+                <select id="period-selector" class="period-select">
+                    <option data-i18n="loading_periods">Loading periods...</option>
+                </select>
+                <i class="ph-bold ph-caret-down select-icon"></i>
+            </div>
+        </div>
+
+        <!-- Score & Heatmap -->
+        <div class="heatmap-card">
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <h3 style="color:var(--text-muted); font-size:0.9rem; text-transform:uppercase;"
+                    data-i18n="health_rhythm">Health Rhythm</h3>
+                <span id="health-score" style="font-weight:800; color:var(--accent-lime); font-size:1.2rem;">--</span>
+            </div>
+            <div id="heatmap-grid" class="heatmap-grid"></div>
+            <div
+                style="display:flex; gap:10px; font-size:0.7rem; color:var(--text-muted); margin-top:10px; justify-content:flex-end;">
+                <span style="display:flex; align-items:center; gap:4px;"><span
+                        style="width:10px; height:10px; background:var(--accent-lime); border-radius:2px;"></span>
+                    <span data-i18n="legend_good">Excellent</span></span>
+                <span style="display:flex; align-items:center; gap:4px;"><span
+                        style="width:10px; height:10px; background:#f59e0b; border-radius:2px;"></span> <span
+                        data-i18n="legend_warning">Good</span></span>
+                <span style="display:flex; align-items:center; gap:4px;"><span
+                        style="width:10px; height:10px; background:#ef4444; border-radius:2px;"></span> <span
+                        data-i18n="legend_bad">Bad</span></span>
+            </div>
+        </div>
+
+        <!-- AI Insights -->
+        <h3 style="margin:20px 0 10px 0;" data-i18n="ai_insights">AI Insights</h3>
+        <div id="insights-container">
+            <div style="text-align:center; padding:20px; color:var(--text-muted);" data-i18n="select_period_hint">Select
+                a period above</div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="loading-overlay hidden">
+        <i class="ph-bold ph-spinner"
+            style="font-size:3rem; color:var(--accent-lime); animation: spin 1s linear infinite;"></i>
+        <p style="margin-top:20px; font-weight:600;" data-i18n="loading_analysis">AI Analyst is crunching the numbers...
+        </p>
+    </div>
+
+    <style>
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+
+    <script>
+        // --- I18N FOR TRENDS ---
+        const trendsTranslations = {
+            en: {
+                back_home: 'Home',
+                trends_title: 'Health Trends',
+                mode_weekly: 'Week View',
+                mode_monthly: 'Month View',
+                loading_periods: 'Loading...',
+                health_rhythm: 'Health Rhythm',
+                overview_week: 'Weekly Overview',
+                overview_month: 'Monthly Overview',
+                legend_good: 'Excellent',
+                legend_warning: 'Good',
+                legend_bad: 'Bad',
+                ai_insights: 'AI Insights',
+                select_period_hint: 'Select a period above',
+                loading_analysis: 'AI Analyst is crunching the numbers...',
+                no_logs: 'No logs recorded yet.',
+                summary_title: 'Dr. AI Summary',
+                discovery_title: 'Discovery',
+                server_issue: 'Server Issue',
+                restart_server: 'Restart Server Required',
+                connection_failed: 'Connection Failed',
+                analysis_in_progress: 'Analysis In Progress',
+                collecting_data: 'Collecting data... Check back next week!',
+                need_more_data: 'Need More Data',
+                need_more_data_msg: 'Logged {N}/3 times. Keep tracking!',
+                no_analysis: 'No Analysis',
+                no_data_available: 'No data available.'
+            },
+            zh: {
+                back_home: '首页',
+                trends_title: '健康趋势',
+                mode_weekly: '周视图',
+                mode_monthly: '月视图',
+                loading_periods: '加载中...',
+                health_rhythm: '健康节奏',
+                overview_week: '本周便况一览',
+                overview_month: '本月便况一览',
+                legend_good: '优',
+                legend_warning: '良',
+                legend_bad: '差',
+                ai_insights: 'AI 深度洞察',
+                select_period_hint: '请在上方选择时间段',
+                loading_analysis: 'AI 正在分析数据...',
+                no_logs: '暂无记录',
+                summary_title: 'AI 医生总结',
+                discovery_title: '发现',
+                server_issue: '服务器错误',
+                restart_server: '请重启服务器',
+                connection_failed: '连接失败',
+                analysis_in_progress: '分析进行中',
+                collecting_data: '数据收集中... 请下周再来看！',
+                need_more_data: '数据不足',
+                need_more_data_msg: '当前记录 {N}/3 次。请继续记录！',
+                no_analysis: '暂无分析',
+                no_data_available: '暂无数据'
+            }
+        };
+
+        const appLang = localStorage.getItem('app_lang') || 'en';
+        const t = trendsTranslations[appLang];
+
+        function applyStaticI18n() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                if (t[key] !== undefined) el.textContent = t[key];
+            });
+        }
+        applyStaticI18n();
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const token = localStorage.getItem('auth_token');
+            if (!token) window.location.href = '/login.html';
+
+            const personaId = parseInt(localStorage.getItem('current_persona_id'));
+            if (!personaId) { alert("Select a profile first"); window.location.href = '/'; }
+
+            const heatmapGrid = document.getElementById('heatmap-grid');
+            const insightsContainer = document.getElementById('insights-container');
+            const loading = document.getElementById('loading');
+            const scoreEl = document.getElementById('health-score');
+            const periodSelector = document.getElementById('period-selector');
+            const modeWeekBtn = document.getElementById('mode-week');
+            const modeMonthBtn = document.getElementById('mode-month');
+
+            let currentMode = 'week'; // or 'month'
+            let personaCreatedAt = new Date();
+
+            // 1. Fetch Persona Details to get CreatedAt
+            try {
+                const res = await fetch('/api/personas', { headers: { 'Authorization': `Bearer ${token}` } });
+                const json = await res.json();
+                const persona = json.data.find(p => p.id === personaId);
+                if (persona) {
+                    personaCreatedAt = new Date(persona.created_at);
+                }
+            } catch (e) { console.error("Failed to load persona info", e); }
+
+            // 2. Initialize UI
+            setMode(currentMode);
+
+            // 3. Events
+            modeWeekBtn.addEventListener('click', () => setMode('week'));
+            modeMonthBtn.addEventListener('click', () => setMode('month'));
+
+            periodSelector.addEventListener('change', () => {
+                const [start, end] = periodSelector.value.split('|');
+                if (start && end) loadTrends(start, end);
+            });
+
+            function setMode(mode) {
+                currentMode = mode;
+                modeWeekBtn.classList.toggle('active', mode === 'week');
+                modeMonthBtn.classList.toggle('active', mode === 'month');
+                const titleEl = document.querySelector('[data-i18n="health_rhythm"]');
+                if (titleEl) {
+                    titleEl.textContent = t[`overview_${mode}`] || (mode === 'week' ? t.overview_week : t.overview_month);
+                }
+                renderOptions();
+            }
+
+            function renderOptions() {
+                periodSelector.innerHTML = '';
+                const now = new Date();
+                const start = new Date(personaCreatedAt); // Start from creation
+                // Adjust start to beginning of its period
+                if (currentMode === 'week') start.setDate(start.getDate() - (start.getDay() || 7) + 1);
+                else start.setDate(1);
+
+                const periods = [];
+
+                if (currentMode === 'week') {
+                    // Generate weeks from Now backwards to Start
+                    // Find current Monday
+                    let currentMonday = new Date(now);
+                    currentMonday.setDate(now.getDate() - (now.getDay() || 7) + 1);
+                    currentMonday.setHours(0, 0, 0, 0);
+
+                    while (currentMonday >= start || periods.length === 0) {
+                        const weekEnd = new Date(currentMonday);
+                        weekEnd.setDate(currentMonday.getDate() + 6);
+
+                        const label = `${formatDate(currentMonday)} - ${formatDate(weekEnd)}`;
+                        const isThisWeek = currentMonday > new Date(new Date().setDate(new Date().getDate() - 7));
+
+                        periods.push({
+                            label: isThisWeek ? `This Week (${label})` : label,
+                            value: `${toISODate(currentMonday)}|${toISODate(weekEnd)}`
+                        });
+
+                        // Go back one week
+                        currentMonday.setDate(currentMonday.getDate() - 7);
+                        if (periods.length > 52) break; // Safety break
+                    }
+                } else {
+                    // Months
+                    let currentMonth = new Date(now);
+                    currentMonth.setDate(1);
+                    currentMonth.setHours(0, 0, 0, 0);
+
+                    while (currentMonth >= start || periods.length === 0) {
+                        const monthEnd = new Date(currentMonth);
+                        monthEnd.setMonth(currentMonth.getMonth() + 1);
+                        monthEnd.setDate(0);
+
+                        const label = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                        periods.push({
+                            label: label,
+                            value: `${toISODate(currentMonth)}|${toISODate(monthEnd)}`
+                        });
+
+                        currentMonth.setMonth(currentMonth.getMonth() - 1);
+                        if (periods.length > 24) break;
+                    }
+                }
+
+                periods.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.value;
+                    opt.textContent = p.label;
+                    periodSelector.appendChild(opt);
+                });
+
+                // Trigger load for first item
+                if (periods.length > 0) {
+                    const [s, e] = periods[0].value.split('|');
+                    loadTrends(s, e);
+                }
+            }
+
+            function formatDate(d) {
+                return `${d.getMonth() + 1}/${d.getDate()}`;
+            }
+            function toISODate(d) {
+                return d.toISOString().split('T')[0];
+            }
+
+            async function loadTrends(startDate, endDate) {
+                loading.classList.remove('hidden');
+                insightsContainer.innerHTML = '';
+                heatmapGrid.innerHTML = '';
+                scoreEl.textContent = '--';
+
+                console.log(`Loading: ${startDate} to ${endDate}`);
+
+                try {
+                    const res = await fetch('/api/analyze/trends', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            startDate,
+                            endDate,
+                            startDate,
+                            endDate,
+                            persona_id: personaId,
+                            lang: appLang // Pass lang param
+                        })
+                    });
+
+                    if (!res.ok) throw new Error(await res.text());
+                    const json = await res.json();
+                    if (json.cached) console.log("Serving from Cache!");
+                    if (json.cached) console.log("Serving from Cache!");
+                    renderData(json); // Pass full object
+
+                } catch (err) {
+                    console.error(err);
+                    insightsContainer.innerHTML = `
+                        <div class="data-card" style="border-color:#ef4444; background:rgba(239, 68, 68, 0.1);">
+                            <div style="font-size:1.5rem; color:#ef4444;"><i class="ph-fill ph-warning-circle"></i></div>
+                            <div style="flex:1;">
+                                <h4 style="color:#ef4444; margin-bottom:4px;">${t.server_issue}</h4>
+                                <p style="font-size:0.9rem; color:rgba(255,255,255,0.7);">${err.message.includes('JSON') ? t.restart_server : t.connection_failed}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+                loading.classList.add('hidden');
+            }
+
+            function renderData(dataStr) {
+                let data;
+                try { data = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr; } catch (e) { console.error(e); return; }
+
+                const analysis = data.analysis || {};
+                const logs = data.logs || [];
+
+                // 1. Grade (New A-D Logic)
+                const grade = analysis.grade || (analysis.score ? (analysis.score >= 80 ? 'A' : 'B') : '--');
+                let gradeClass = 'grade-b';
+                if (grade.startsWith('A')) gradeClass = 'grade-a';
+                else if (grade.startsWith('C')) gradeClass = 'grade-c';
+                else if (grade.startsWith('D')) gradeClass = 'grade-d';
+
+                // Render Grade in Header
+                scoreEl.innerHTML = `<span class="grade-badge ${gradeClass}" style="font-size:2rem;">${grade}</span>`;
+
+                // 2. Heatmap (Use Raw Logs)
+                heatmapGrid.innerHTML = '';
+                // Fill first week days (Sunday to day 1) if Weekly view? 
+                // Simplified: Just list logs for now
+                if (logs.length > 0) {
+                    logs.forEach(log => {
+                        const cell = document.createElement('div');
+                        cell.className = 'day-cell';
+
+                        // Extract Grade (Assuming format "A - 95" or just "A" or missing)
+                        let rawGrade = 'C';
+                        if (log.health_score) {
+                            rawGrade = log.health_score.charAt(0);
+                        } else {
+                            // Fallback if no score
+                            const val = log.bristol;
+                            if (val == 4 || val == 3) rawGrade = 'A';
+                            else if (val == 1 || val == 7) rawGrade = 'D'; // Bad
+                            else rawGrade = 'B';
+                        }
+
+                        // Color Logic
+                        if (rawGrade === 'A') cell.classList.add('good');
+                        else if (rawGrade === 'B') cell.classList.add('warn');
+                        else cell.classList.add('bad');
+
+                        cell.textContent = rawGrade;
+                        cell.title = log.date || `Score: ${log.health_score}`;
+                        heatmapGrid.appendChild(cell);
+                    });
+                } else {
+                    heatmapGrid.innerHTML = `<div style="color:var(--text-muted); font-size:0.8rem; grid-column:1/-1;">${t.no_logs}</div>`;
+                }
+
+                // 3. AI Insights
+                insightsContainer.innerHTML = '';
+
+                if (data.analysis) {
+                    // -- SUMMARY CARD --
+                    const summaryCard = document.createElement('div');
+                    summaryCard.className = 'data-card'; // Reuse new style
+                    summaryCard.style.gridTemplateColumns = '40px 1fr'; // Adjust for icon
+                    summaryCard.innerHTML = `
+                        <div style="font-size:1.5rem; color:var(--text-main); display:flex; justify-content:center;"><i class="ph-fill ph-quotes"></i></div>
+                        <div>
+                            <h4 style="margin-bottom:4px; color:white; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px; opacity:0.7;">${t.summary_title}</h4>
+                            <p style="font-size:0.95rem; color:var(--text-muted); line-height:1.5;">${analysis.summary}</p>
+                        </div>
+                    `;
+                    insightsContainer.appendChild(summaryCard);
+
+                    // -- CORRELATIONS --
+                    if (analysis.correlations) {
+                        analysis.correlations.forEach(corr => {
+                            const card = document.createElement('div');
+                            card.className = 'data-card';
+                            card.style.gridTemplateColumns = '40px 1fr';
+                            card.innerHTML = `
+                                <div style="font-size:1.5rem; color:#fbbf24; display:flex; justify-content:center;"><i class="ph-fill ph-lightbulb"></i></div>
+                                <div>
+                                    <h4 style="margin-bottom:4px; color:#fbbf24; font-size:0.9rem;">${t.discovery_title}</h4>
+                                    <p style="font-size:0.9rem; color:var(--text-muted);">
+                                        <b>${corr.cause}</b> &rarr; <b>${corr.effect}</b>
+                                    </p>
+                                </div>
+                            `;
+                            insightsContainer.appendChild(card);
+                        });
+                    }
+                } else {
+                    // -- FRIENDLY STATES --
+                    const reason = data.reason || 'unknown';
+                    let title, msg, icon;
+
+                    if (reason === 'current_period') {
+                        title = t.analysis_in_progress;
+                        msg = t.collecting_data;
+                        icon = "ph-hourglass";
+                    } else if (reason === 'insufficient_data') {
+                        title = t.need_more_data;
+                        msg = t.need_more_data_msg.replace('{N}', logs.length);
+                        icon = "ph-chart-bar";
+                    } else {
+                        title = t.no_analysis;
+                        msg = t.no_data_available;
+                        icon = "ph-info";
+                    }
+
+                    const card = document.createElement('div');
+                    card.className = 'data-card';
+                    card.style.borderStyle = 'dashed';
+                    card.style.opacity = '0.7';
+                    card.style.gridTemplateColumns = '40px 1fr';
+                    card.innerHTML = `
+                        <div style="font-size:1.5rem; color:var(--text-muted); display:flex; justify-content:center;">
+                            <i class="ph-fill ${icon}"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin-bottom:4px; color:var(--text-muted);">${title}</h4>
+                            <p style="font-size:0.9rem; color:var(--text-muted);">${msg}</p>
+                        </div>
+                    `;
+                    insightsContainer.appendChild(card);
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

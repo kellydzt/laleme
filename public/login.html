@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Login - Laleme</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .auth-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 30px;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .auth-header i {
+            font-size: 3rem;
+            color: var(--accent-lime);
+            margin-bottom: 10px;
+        }
+
+        .auth-header h1 {
+            font-size: 2rem;
+            margin-bottom: 5px;
+        }
+
+        .auth-header p {
+            color: var(--text-muted);
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .toggle-auth {
+            text-align: center;
+            margin-top: 20px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .toggle-auth a {
+            color: var(--accent-lime);
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="auth-card">
+        <div class="auth-header">
+            <i class="ph-fill ph-toilet-paper"></i>
+            <h1>Laleme</h1>
+            <p id="auth-subtitle">Welcome back</p>
+        </div>
+
+        <!-- LOGIN FORM -->
+        <form id="login-form">
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" autocomplete="email" id="login-email" class="text-input" style="width:100%"
+                    required>
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" autocomplete="current-password" id="login-password" class="text-input"
+                    style="width:100%" required>
+            </div>
+            <button type="submit" class="primary-btn">Sign In</button>
+            <div class="toggle-auth">
+                New user? <a id="show-register">Have an invite?</a>
+            </div>
+        </form>
+
+        <!-- REGISTER FORM -->
+        <form id="register-form" class="hidden">
+            <div class="input-group">
+                <label>Invite Code</label>
+                <input type="text" id="reg-code" class="text-input"
+                    style="width:100%; border-color:var(--accent-purple);" placeholder="Required" required>
+            </div>
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" autocomplete="email" id="reg-email" class="text-input" style="width:100%" required>
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" autocomplete="new-password" id="reg-password" class="text-input"
+                    style="width:100%" required>
+            </div>
+            <button type="submit" class="primary-btn" style="background:var(--accent-purple); color:white;">Create
+                Account</button>
+            <div class="toggle-auth">
+                Already have an account? <a id="show-login">Sign In</a>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const showRegister = document.getElementById('show-register');
+        const showLogin = document.getElementById('show-login');
+        const subtitle = document.getElementById('auth-subtitle');
+
+        showRegister.addEventListener('click', () => {
+            loginForm.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+            subtitle.textContent = "Join with Invite Code";
+        });
+
+        showLogin.addEventListener('click', () => {
+            registerForm.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+            subtitle.textContent = "Welcome back";
+        });
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const btn = loginForm.querySelector('button');
+            const originalText = btn.textContent;
+            btn.textContent = 'Verifying...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    localStorage.setItem('auth_token', data.token);
+                    localStorage.setItem('user_role', data.user.role);
+                    window.location.href = '/';
+                } else {
+                    alert(data.error);
+                }
+            } catch (err) {
+                alert('Login failed');
+            }
+            btn.textContent = originalText;
+            btn.disabled = false;
+        });
+
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const inviteCode = document.getElementById('reg-code').value;
+            const email = document.getElementById('reg-email').value;
+            const password = document.getElementById('reg-password').value;
+            const btn = registerForm.querySelector('button');
+            btn.textContent = 'Creating...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, inviteCode })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    alert("Account created! Please sign in.");
+                    showLogin.click();
+                } else {
+                    alert(data.error);
+                }
+            } catch (err) {
+                alert('Registration failed');
+            }
+            btn.textContent = 'Create Account';
+            btn.disabled = false;
+        });
+    </script>
+</body>
+
+</html>

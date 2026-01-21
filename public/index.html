@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Laleme (拉了么)</title>
+
+    <!-- Fonts: Plus Jakarta Sans for modern geometric feel -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Phosphor Icons for clean UI icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+</head>
+
+<body>
+    <div class="bento-container">
+        <!-- Header Card -->
+        <header class="bento-card header-card">
+            <div class="logo-area">
+                <i class="ph-fill ph-toilet-paper"></i>
+                <h1 class="app-title" data-i18n="app_title">Laleme</h1>
+            </div>
+
+            <!-- Persona Switcher -->
+            <div id="persona-switcher" class="persona-switcher">
+                <div class="current-persona">
+                    <i class="ph-fill ph-user-circle"></i>
+                    <span id="current-persona-name">Guest</span>
+                </div>
+                <!-- Dropdown -->
+                <div id="persona-dropdown" class="persona-dropdown hidden">
+                    <div class="persona-list" id="persona-list">
+                        <!-- Populated by JS -->
+                    </div>
+
+                    <a href="settings.html" class="persona-option"
+                        style="text-decoration:none; color:inherit; border-top:1px solid rgba(255,255,255,0.05); margin-top:4px;">
+                        <i class="ph-bold ph-gear"></i> <span data-i18n="menu_settings">Settings</span>
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Row -->
+        <div class="bento-card stat-card blue-accent">
+            <span class="stat-label" data-i18n="stat_today">Today</span>
+            <span class="stat-value" id="today-count">0</span>
+            <i class="ph-duotone ph-clock stat-icon"></i>
+        </div>
+        <div class="bento-card stat-card purple-accent" onclick="window.location.href='trends.html'"
+            style="cursor:pointer; position: relative;">
+            <span class="stat-label" data-i18n="stat_trends">Trends (7d)</span>
+            <span class="stat-value" id="total-count">0</span>
+            <i class="ph-duotone ph-chart-line-up stat-icon"></i>
+            <div style="font-size:0.7rem; color:rgba(255,255,255,0.4); position:absolute; bottom:12px; right:12px;">
+                Click to view ></div>
+        </div>
+
+        <!-- Main Action Card -->
+        <form id="upload-form" class="bento-card action-card lime-accent"
+            onclick="document.getElementById('photo-input').click()">
+            <div class="action-content">
+                <div class="icon-circle">
+                    <i class="ph-fill ph-camera"></i>
+                </div>
+                <h2 data-i18n="action_log">Log It Now</h2>
+                <p data-i18n="action_log_desc">Track your health daily</p>
+            </div>
+            <input type="file" id="photo-input" name="photo" accept="image/*" capture="environment">
+            <input type="hidden" name="stool_type" value="4">
+            <input type="hidden" name="color" value="brown">
+        </form>
+
+        <!-- Feed Section -->
+        <div class="bento-card feed-card">
+            <div class="feed-header">
+                <h3 data-i18n="recent_history">Recent History</h3>
+                <i class="ph-bold ph-caret-right"></i>
+            </div>
+            <div id="records-list" class="records-list">
+                <!-- Records injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Overlay -->
+    <div id="analysis-overlay" class="overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <i class="ph-fill ph-sparkle"></i>
+                <h3 data-i18n="ai_insights_title">AI Insights</h3>
+            </div>
+            <div class="modal-body">
+                <p id="analysis-text">Analyzing image data...</p>
+            </div>
+            <button class="close-btn" data-i18n="btn_done">Done</button>
+        </div>
+    </div>
+
+    <!-- Persona Selector Overlay -->
+    <!-- Persona Selector Overlay -->
+    <div id="persona-selector-overlay" class="overlay hidden">
+        <div class="modal-card">
+
+            <div class="modal-header"
+                style="justify-content:center; align-items:center; flex-direction:column; gap:8px; border:none; padding-bottom:10px;">
+                <h3 style="font-size:1.4rem;">Who is this for?</h3>
+                <span class="sub-text">Select the profile for this log</span>
+            </div>
+
+            <!-- New Contained Image Preview -->
+            <div class="modal-image-container" style="height: 180px; margin-bottom: 20px;">
+                <img id="persona-selector-preview" src="" class="detail-img blurred"
+                    style="object-fit: cover; height: 100%;">
+            </div>
+
+            <div id="persona-selector-grid" class="persona-grid"
+                style="display:grid; grid-template-columns:repeat(auto-fit, minmax(80px, 1fr)); gap:20px; padding:0 10px 20px 10px;">
+                <!-- Avatars injected here -->
+            </div>
+
+            <button class="close-btn secondary-btn" id="btn-cancel-upload"
+                style="margin-top:10px; background:rgba(255,255,255,0.1);">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Data Dashboard Overlay -->
+    <div id="data-dashboard-overlay" class="overlay hidden">
+        <div class="modal-card dashboard-card">
+            <div class="modal-header">
+                <h3 data-i18n="log_details_title">Log Details</h3>
+                <span class="sub-text" data-i18n="log_analyzing_subtitle">While we analyze...</span>
+            </div>
+            <div class="dashboard-body">
+                <!-- 1. Effort -->
+                <section class="dashboard-section">
+                    <h4 data-i18n="lbl_straining">Straining / Effort</h4>
+                    <div class="effort-selector">
+                        <div class="effort-option" data-value="1">
+                            <span class="emoji">😌</span>
+                            <span class="label" data-i18n="val_easy">Easy</span>
+                        </div>
+                        <div class="effort-option" data-value="2">
+                            <span class="emoji">😐</span>
+                            <span class="label" data-i18n="val_normal">Normal</span>
+                        </div>
+                        <div class="effort-option" data-value="3">
+                            <span class="emoji">😣</span>
+                            <span class="label" data-i18n="val_hard">Hard</span>
+                        </div>
+                        <div class="effort-option" data-value="4">
+                            <span class="emoji">🥵</span>
+                            <span class="label" data-i18n="val_blocked">Blocked</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. Sensation -->
+                <section class="dashboard-section">
+                    <h4 data-i18n="lbl_sensation">Evacuation Sensation</h4>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="sensation-toggle">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-text on" data-i18n="val_incomplete">Incomplete</span>
+                            <span class="toggle-text off" data-i18n="val_complete">Complete</span>
+                        </label>
+                    </div>
+                </section>
+
+                <!-- 3. Symptoms -->
+                <section class="dashboard-section">
+                    <h4 data-i18n="lbl_symptoms">Symptoms</h4>
+                    <div class="tag-cloud" id="symptoms-tags">
+                        <span class="tag" data-value="pain" data-i18n="tag_pain">#Pain</span>
+                        <span class="tag" data-value="bloating" data-i18n="tag_bloating">#Bloating</span>
+                        <span class="tag" data-value="burning" data-i18n="tag_burning">#Burning</span>
+                        <span class="tag" data-value="nausea" data-i18n="tag_nausea">#Nausea</span>
+                        <span class="tag" data-value="bleeding" data-i18n="tag_bleeding">#Bleeding</span>
+                    </div>
+                </section>
+
+                <!-- 4. Triggers -->
+                <section class="dashboard-section">
+                    <h4 data-i18n="lbl_triggers">Triggers</h4>
+                    <div class="icon-grid" id="triggers-grid">
+                        <div class="icon-item" data-value="coffee">
+                            <i class="ph-fill ph-coffee"></i>
+                            <span data-i18n="tag_coffee">Coffee</span>
+                        </div>
+                        <div class="icon-item" data-value="spicy">
+                            <i class="ph-fill ph-fire"></i>
+                            <span data-i18n="tag_spicy">Spicy</span>
+                        </div>
+                        <div class="icon-item" data-value="dairy">
+                            <i class="ph-fill ph-cheese"></i>
+                            <span data-i18n="tag_dairy">Dairy</span>
+                        </div>
+                        <div class="icon-item" data-value="alcohol">
+                            <i class="ph-fill ph-beer-bottle"></i>
+                            <span data-i18n="tag_alcohol">Alcohol</span>
+                        </div>
+                        <div class="icon-item" data-value="meds">
+                            <i class="ph-fill ph-pill"></i>
+                            <span data-i18n="tag_meds">Meds</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5. Context -->
+                <section class="dashboard-section">
+                    <h4 data-i18n="lbl_context">Context</h4>
+                    <div class="context-selector" id="context-selector">
+                        <button class="context-btn" data-value="home"><i class="ph-fill ph-house"></i> <span
+                                data-i18n="tag_home">Home</span></button>
+                        <button class="context-btn" data-value="work"><i class="ph-fill ph-briefcase"></i> <span
+                                data-i18n="tag_work">Work</span></button>
+                        <button class="context-btn" data-value="hotel"><i class="ph-fill ph-bed"></i> <span
+                                data-i18n="tag_hotel">Hotel</span></button>
+                        <button class="context-btn" data-value="public"><i class="ph-fill ph-toilet"></i>
+                            <span data-i18n="tag_public">Public</span></button>
+                    </div>
+                </section>
+            </div>
+            <button id="save-details-btn" class="primary-btn" data-i18n="btn_save_analysis">Save & View
+                Analysis</button>
+        </div>
+    </div>
+
+    <!-- PERSONA WIZARD OVERLAY -->
+    <div id="persona-wizard-overlay" class="overlay hidden" style="z-index: 2000;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <i class="ph-fill ph-user-plus"></i>
+                <h3>Create Profile</h3>
+            </div>
+            <div class="modal-body" style="padding: 20px 0;">
+
+                <!-- STEP 1: BASICS -->
+                <div id="wizard-step-1" class="wizard-step">
+                    <div class="input-group">
+                        <label>Nickname</label>
+                        <input type="text" id="persona-nickname" placeholder="e.g. Baby Joe" class="text-input">
+                    </div>
+                    <div class="input-group">
+                        <label>Date of Birth</label>
+                        <input type="date" id="persona-dob" class="text-input">
+                    </div>
+                    <div class="input-group">
+                        <label>Gender</label>
+                        <div class="segment-control" id="gender-control">
+                            <div class="segment-option selected" data-value="male">Boy</div>
+                            <div class="segment-option" data-value="female">Girl</div>
+                        </div>
+                    </div>
+                    <button class="primary-btn" id="btn-wizard-next">Next <i
+                            class="ph-bold ph-arrow-right"></i></button>
+                </div>
+
+                <!-- STEP 2: BABY CONTEXT -->
+                <div id="wizard-step-baby" class="wizard-step hidden">
+                    <div class="info-box">
+                        <i class="ph-fill ph-baby"></i>
+                        <span>Analyzed as <b>Baby (< 1y)</b></span>
+                    </div>
+                    <div class="input-group">
+                        <label>Feeding Method (Crucial)</label>
+                        <div class="grid-options" id="baby-feeding-options">
+                            <div class="grid-option" data-value="Breast">🤱 Breast</div>
+                            <div class="grid-option" data-value="Formula">🍼 Formula</div>
+                            <div class="grid-option" data-value="Mix">🧪 Mix</div>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Current Stage</label>
+                        <div class="grid-options" id="baby-stage-options">
+                            <div class="grid-option" data-value="New">👶 New</div>
+                            <div class="grid-option" data-value="Solid">🥕 Solids</div>
+                        </div>
+                    </div>
+                    <button class="primary-btn" id="btn-create-baby">Create Profile</button>
+                </div>
+
+                <!-- STEP 2: ADULT CONTEXT -->
+                <div id="wizard-step-adult" class="wizard-step hidden">
+                    <div class="info-box adult">
+                        <i class="ph-fill ph-user"></i>
+                        <span>Analyzed as <b>Adult/Teen</b></span>
+                    </div>
+                    <div class="input-group">
+                        <label>Health Conditions (Optional)</label>
+                        <div class="tag-cloud" id="adult-health-tags">
+                            <span class="tag" data-value="IBS">IBS</span>
+                            <span class="tag" data-value="Lactose">Lactose Intolerant</span>
+                            <span class="tag" data-value="NoGallbladder">No Gallbladder</span>
+                            <span class="tag" data-value="Constipation">Constipation</span>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Medications</label>
+                        <div class="tag-cloud" id="adult-meds-tags">
+                            <span class="tag" data-value="Iron">Iron Supps</span>
+                            <span class="tag" data-value="Antibiotics">Antibiotics</span>
+                        </div>
+                    </div>
+                    <button class="primary-btn" id="btn-create-adult">Create Profile</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

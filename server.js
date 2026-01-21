@@ -1,0 +1,708 @@
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const cors = require('cors');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const sharp = require('sharp');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_laleme_key'; // In prod, use .env
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+app.use('/uploads', express.static('uploads'));
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir);
+}
+
+// Database Setup
+const db = new sqlite3.Database('./poop.db', (err) => {
+    if (err) {
+        console.error('Error opening database', err.message);
+    } else {
+        console.log('Connected to the SQLite database.');
+        initializeDatabase();
+    }
+});
+
+function initializeDatabase() {
+    // 1. Users Table
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE,
+        password_hash TEXT,
+        role TEXT DEFAULT 'user', -- 'admin' or 'user'
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, () => {
+        // Create Default Admin if empty
+        db.get("SELECT count(*) as count FROM users", [], (err, row) => {
+            if (row && row.count === 0) {
+                const hash = bcrypt.hashSync('admin123', 10);
+                db.run("INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)",
+                    ['admin@laleme.com', hash, 'admin']);
+                console.log("Default Admin created: admin@laleme.com / admin123");
+            }
+        });
+    });
+
+    // 2. Invites Table
+    db.run(`CREATE TABLE IF NOT EXISTS invites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT UNIQUE,
+        created_by INTEGER,
+        is_used BOOLEAN DEFAULT 0,
+        used_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // 3. Personas Table (Updated)
+    db.run(`CREATE TABLE IF NOT EXISTS personas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER, -- FK to users
+        nickname TEXT,
+        dob TEXT,
+        gender TEXT,
+        baby_feeding TEXT,
+        baby_stage TEXT,
+        adult_health TEXT,
+        adult_meds TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, () => {
+        // Migration: Add user_id if missing
+        addColumnIfNotExists('personas', 'user_id', 'INTEGER', () => {
+            // Link orphan personas to Admin (ID 1)
+            db.run("UPDATE personas SET user_id = 1 WHERE user_id IS NULL");
+        });
+    });
+
+    // 4. Records Table
+    db.run(`CREATE TABLE IF NOT EXISTS records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        persona_id INTEGER,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        image_path TEXT,
+        stool_type INTEGER,
+        color TEXT,
+        note TEXT,
+        effort INTEGER,
+        sensation TEXT,
+        symptoms TEXT,
+        triggers TEXT,
+        location_context TEXT,
+        ai_analysis TEXT,
+        health_score TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, () => {
+        // Migration: Add health_score if missing
+        addColumnIfNotExists('records', 'health_score', 'TEXT');
+    });
+
+    // 5. Trend Reports Table (Optimization Cache)
+    db.run(`CREATE TABLE IF NOT EXISTS trend_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        persona_id INTEGER,
+        start_date TEXT,
+        end_date TEXT,
+        analysis_json TEXT,
+        created_at TEXT DEFAULT (datetime('now', 'localtime')),
+        FOREIGN KEY (persona_id) REFERENCES personas(id)
+    )`);
+}
+
+function addColumnIfNotExists(table, column, type, callback) {
+    db.all(`PRAGMA table_info(${table})`, (err, rows) => {
+        if (err) return;
+        const exists = rows.some(r => r.name === column);
+        if (!exists) {
+            db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`, (err) => {
+                if (!err) console.log(`Added column ${column} to ${table}`);
+                if (callback) callback();
+            });
+        } else if (callback) {
+            callback();
+        }
+    });
+}
+
+// --- AUTH MIDDLEWARE ---
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+    if (token == null) return res.sendStatus(401);
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+}
+
+function isAdmin(req, res, next) {
+    if (req.user && req.user.role === 'admin') {
+        next();
+    } else {
+        res.status(403).json({ error: "Access denied. Admin only." });
+    }
+}
+
+
+const { analyzeImage } = require('./ai_service');
+
+// Configure Multer for file upload
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/')
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + path.extname(file.originalname)) // Append extension
+    }
+});
+const upload = multer({ storage: storage });
+
+// API Routes
+
+// 1. AUTH & ADMIN
+app.post('/api/auth/register', async (req, res) => {
+    const { email, password, inviteCode } = req.body;
+
+    // Check Invite
+    db.get("SELECT * FROM invites WHERE code = ? AND is_used = 0", [inviteCode], async (err, invite) => {
+        if (err) return res.status(500).json({ error: "DB Error" });
+        if (!invite) return res.status(400).json({ error: "Invalid or expired invite code" });
+
+        // Hash Password
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Create User
+        db.run("INSERT INTO users (email, password_hash) VALUES (?, ?)", [email, passwordHash], function (err) {
+            if (err) return res.status(400).json({ error: "Email already exists" });
+
+            const userId = this.lastID;
+
+            // Mark Invite Used
+            db.run("UPDATE invites SET is_used = 1, used_by = ? WHERE id = ?", [userId, invite.id]);
+
+            res.json({ message: "Registration successful" });
+        });
+    });
+});
+
+app.post('/api/auth/login', (req, res) => {
+    const { email, password } = req.body;
+    db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
+        if (err || !user) return res.status(400).json({ error: "User not found" });
+
+        if (await bcrypt.compare(password, user.password_hash)) {
+            const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET);
+            res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+        } else {
+            res.status(403).json({ error: "Invalid password" });
+        }
+    });
+});
+
+app.post('/api/admin/invites', authenticateToken, isAdmin, (req, res) => {
+    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+    db.run("INSERT INTO invites (code, created_by) VALUES (?, ?)", [code, req.user.id], function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ code });
+    });
+});
+
+app.get('/api/admin/invites', authenticateToken, isAdmin, (req, res) => {
+    db.all("SELECT * FROM invites ORDER BY created_at DESC", [], (err, rows) => {
+        res.json({ data: rows });
+    });
+});
+
+
+// 2. PERSONAS (Protected & User-Isolated)
+// Get All Personas
+app.get('/api/personas', authenticateToken, (req, res) => {
+    // Only return personas owned by this user
+    db.all("SELECT * FROM personas WHERE user_id = ? ORDER BY created_at ASC", [req.user.id], (err, rows) => {
+        if (err) return res.status(400).json({ error: err.message });
+
+        // Parse JSON fields
+        const personas = rows.map(p => ({
+            ...p,
+            adult_health: p.adult_health ? JSON.parse(p.adult_health) : [],
+            adult_meds: p.adult_meds ? JSON.parse(p.adult_meds) : []
+        }));
+        res.json({ data: personas });
+    });
+});
+
+// Create Persona
+app.post('/api/personas', authenticateToken, (req, res) => {
+    const { nickname, dob, gender, baby_feeding, baby_stage, adult_health, adult_meds } = req.body;
+
+    if (!nickname || !dob) {
+        return res.status(400).json({ error: 'Nickname and Date of Birth are required' });
+    }
+
+    const sql = `INSERT INTO personas (user_id, nickname, dob, gender, baby_feeding, baby_stage, adult_health, adult_meds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    const params = [
+        req.user.id, // Authenticated User ID
+        nickname,
+        dob,
+        gender || 'unknown',
+        baby_feeding || null,
+        baby_stage || null,
+        JSON.stringify(adult_health || []),
+        JSON.stringify(adult_meds || [])
+    ];
+
+    db.run(sql, params, function (err) {
+        if (err) return res.status(400).json({ error: err.message });
+
+        res.json({
+            message: 'Persona created',
+            data: { id: this.lastID, ...req.body }
+        });
+    });
+});
+
+// Update Persona
+app.put('/api/personas/:id', authenticateToken, (req, res) => {
+    const { nickname, dob, gender, baby_feeding, baby_stage, adult_health, adult_meds } = req.body;
+    const personaId = req.params.id;
+
+    if (!nickname || !dob) {
+        return res.status(400).json({ error: 'Nickname and Date of Birth are required' });
+    }
+
+    // Verify Ownership first
+    db.get("SELECT id FROM personas WHERE id = ? AND user_id = ?", [personaId, req.user.id], (err, row) => {
+        if (err || !row) return res.status(403).json({ error: "Access denied or persona not found" });
+
+        const sql = `UPDATE personas SET nickname = ?, dob = ?, gender = ?, baby_feeding = ?, baby_stage = ?, adult_health = ?, adult_meds = ? WHERE id = ?`;
+        const params = [
+            nickname,
+            dob,
+            gender || 'unknown',
+            baby_feeding || null,
+            baby_stage || null,
+            JSON.stringify(adult_health || []),
+            JSON.stringify(adult_meds || []),
+            personaId
+        ];
+
+        db.run(sql, params, function (err) {
+            if (err) return res.status(400).json({ error: err.message });
+            res.json({ message: 'Persona updated successfully' });
+        });
+    });
+});
+
+// Delete Persona (Cascade)
+app.delete('/api/personas/:id', authenticateToken, (req, res) => {
+    const personaId = req.params.id;
+
+    // Verify Ownership
+    db.get("SELECT id FROM personas WHERE id = ? AND user_id = ?", [personaId, req.user.id], (err, row) => {
+        if (err || !row) return res.status(403).json({ error: "Access denied or persona not found" });
+
+        // 1. Delete all records for this persona
+        db.run("DELETE FROM records WHERE persona_id = ?", [personaId], function (err) {
+            if (err) console.error("Error cleaning up records for persona", personaId);
+
+            // 2. Delete the persona
+            db.run("DELETE FROM personas WHERE id = ?", [personaId], function (err) {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ message: 'Persona and all associated records deleted' });
+            });
+        });
+    });
+});
+
+
+// 3. RECORDS (Protected via Persona Ownership)
+// Helper to verify user owns the persona
+function verifyPersonaOwnership(userId, personaId, callback) {
+    db.get("SELECT id FROM personas WHERE id = ? AND user_id = ?", [personaId, userId], (err, row) => {
+        if (row) callback(true);
+        else callback(false);
+    });
+}
+
+// 1. Upload Record (Initial Step)
+app.post('/api/records', authenticateToken, upload.single('photo'), (req, res) => {
+    // Initial creation only needs image and basics
+    const image_path = req.file ? req.file.path : null;
+    const { stool_type, color, note, persona_id } = req.body; // Added persona_id
+
+    if (!image_path) {
+        return res.status(400).json({ error: 'No image uploaded' });
+    }
+
+    const sql = `INSERT INTO records (stool_type, color, note, image_path, persona_id) VALUES (?, ?, ?, ?, ?)`;
+    // Defaults for initial load
+    const params = [stool_type || 4, color || 'unknown', note || '', image_path, persona_id || null];
+
+    // COMPRESSION LOGIC
+    if (image_path) {
+        const fullPath = path.resolve(__dirname, image_path);
+        const dir = path.dirname(fullPath);
+        const ext = path.extname(fullPath);
+        const name = path.basename(fullPath, ext);
+        const origPath = path.join(dir, `${name}_orig${ext}`);
+
+        // Rename original to _orig
+        fs.rename(fullPath, origPath, (err) => {
+            if (err) {
+                console.error("Failed to rename original file:", err);
+                // If rename fails, we just keep using the original as is (no compression)
+            } else {
+                // Compress _orig -> original path
+                sharp(origPath)
+                    .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }) // Max 1280px
+                    .jpeg({ quality: 80, mozjpeg: true }) // Convert to JPEG/Compress
+                    .toFile(fullPath)
+                    .then(() => {
+                        console.log(`Compressed ${image_path}`);
+                    })
+                    .catch(err => {
+                        console.error("Compression failed:", err);
+                        // Restore original if compression fails
+                        fs.rename(origPath, fullPath, () => { });
+                    });
+            }
+        });
+    }
+
+    db.run(sql, params, function (err) {
+        if (err) {
+            res.status(400).json({ error: err.message });
+            return;
+        }
+        res.json({
+            message: 'Record created',
+            data: { id: this.lastID, image_path }
+        });
+    });
+});
+
+// 2. Update Record details (Second Step)
+app.put('/api/records/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const { effort, sensation, symptoms, triggers, location_context } = req.body;
+
+    // Verify ownership: Record -> Persona -> User
+    const verifySql = `
+        SELECT r.id 
+        FROM records r 
+        JOIN personas p ON r.persona_id = p.id 
+        WHERE r.id = ? AND p.user_id = ?
+    `;
+
+    db.get(verifySql, [id, req.user.id], (err, row) => {
+        if (err || !row) return res.status(403).json({ error: "Access denied or record not found" });
+
+        const sql = `UPDATE records SET 
+            effort = ?, 
+            sensation = ?, 
+            symptoms = ?, 
+            triggers = ?, 
+            location_context = ?
+            WHERE id = ?`;
+
+        const params = [
+            effort,
+            sensation,
+            JSON.stringify(symptoms || []),
+            JSON.stringify(triggers || []),
+            location_context,
+            id
+        ];
+
+        db.run(sql, params, function (err) {
+            if (err) return res.status(400).json({ error: err.message });
+            res.json({
+                message: 'Record updated',
+                changes: this.changes
+            });
+        });
+    });
+});
+
+// 2.5 Delete Record
+app.delete('/api/records/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+
+    // Verify ownership
+    const verifySql = `
+        SELECT r.id, r.image_path
+        FROM records r 
+        JOIN personas p ON r.persona_id = p.id 
+        WHERE r.id = ? AND p.user_id = ?
+    `;
+
+    db.get(verifySql, [id, req.user.id], (err, row) => {
+        if (err || !row) return res.status(403).json({ error: "Access denied or record not found" });
+
+        // Delete from DB
+        db.run("DELETE FROM records WHERE id = ?", [id], function (err) {
+            if (err) return res.status(500).json({ error: "DB Delete Failed" });
+
+            // Try to delete file (Ignore access errors if already gone)
+            try {
+                if (row.image_path) {
+                    const fullPath = path.resolve(__dirname, row.image_path);
+                    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+                }
+            } catch (fsErr) {
+                console.warn("Failed to delete file:", fsErr.message);
+            }
+
+            res.json({ message: "Record deleted" });
+        });
+    });
+});
+
+// 3. Get History
+app.get('/api/records', authenticateToken, (req, res) => {
+    const { persona_id } = req.query;
+
+    let sql = `
+        SELECT r.* 
+        FROM records r 
+        JOIN personas p ON r.persona_id = p.id 
+        WHERE p.user_id = ?
+    `;
+    const params = [req.user.id];
+
+    if (persona_id) {
+        sql += " AND r.persona_id = ?";
+        params.push(persona_id);
+    }
+
+    sql += " ORDER BY r.created_at DESC";
+
+    db.all(sql, params, (err, rows) => {
+        if (err) return res.status(400).json({ error: err.message });
+
+        const records = rows.map(r => ({
+            ...r,
+            symptoms: r.symptoms ? JSON.parse(r.symptoms) : [],
+            triggers: r.triggers ? JSON.parse(r.triggers) : []
+        }));
+
+        res.json({
+            message: 'Success',
+            data: records
+        });
+    });
+});
+
+// 4. Analyze Image (AI)
+app.post('/api/analyze', authenticateToken, async (req, res) => {
+    const { image_path, context, lang } = req.body;
+    if (!image_path) return res.status(400).json({ error: 'Image path required' });
+
+    // Verify ownership via path
+    const verifySql = `
+        SELECT r.id 
+        FROM records r 
+        JOIN personas p ON r.persona_id = p.id 
+        WHERE r.image_path = ? AND p.user_id = ?
+    `;
+
+    db.get(verifySql, [image_path, req.user.id], async (err, row) => {
+        // We allow loose check for now for legacy records, but stricter is better
+        // For now, if record exists, it must belong to user. 
+        // Note: New uploads will have persona_id, so this join works. 
+        // Orphans might fail this check, but migration fixes orphans.
+        if (err) return res.status(500).json({ error: "DB Error" });
+        if (!row) return res.status(403).json({ error: "Access denied to this record" });
+
+        const fullPath = path.resolve(__dirname, image_path);
+
+        // Check for _orig file for better analysis quality
+        const dir = path.dirname(fullPath);
+        const ext = path.extname(fullPath);
+        const name = path.basename(fullPath, ext);
+        const origPath = path.join(dir, `${name}_orig${ext}`);
+
+        // Use original if exists, otherwise fallback to compressed
+        const analyzePath = fs.existsSync(origPath) ? origPath : fullPath;
+        console.log(`Analyzing image: ${analyzePath} (Original available: ${analyzePath === origPath})`);
+
+        try {
+            const analysis = await analyzeImage(analyzePath, context, lang);
+
+            // Extract Score & Bristol
+            let healthScore = null;
+            let bristolVal = null;
+            try {
+                const json = typeof analysis === 'string' ? JSON.parse(analysis) : analysis;
+                healthScore = json.health_score || null;
+                if (json.bristol && json.bristol.scale) bristolVal = json.bristol.scale;
+            } catch (e) { console.warn("Failed to parse analysis for score", e); }
+
+            // Dynamic Update Query
+            let updateSql = `UPDATE records SET ai_analysis = ?, health_score = ?`;
+            const updateParams = [typeof analysis === 'string' ? analysis : JSON.stringify(analysis), healthScore];
+
+            if (bristolVal) {
+                updateSql += `, stool_type = ?`;
+                updateParams.push(bristolVal);
+            }
+            updateSql += ` WHERE image_path = ?`;
+            updateParams.push(image_path);
+
+            db.run(updateSql, updateParams, function (err) {
+                if (err) console.error("Failed to update record with analysis", err);
+
+                // Cleanup Original if successful
+                if (!err && analyzePath === origPath) {
+                    fs.unlink(origPath, (uErr) => {
+                        if (uErr) console.warn("Failed to delete original file", uErr);
+                        else console.log("Deleted original file after analysis");
+                    });
+                }
+            });
+            res.json({ analysis });
+        } catch (err) {
+            res.status(500).json({ error: "Analysis failed" });
+        }
+    });
+});
+
+// 5. Analyze Trends (Text-based with Caching)
+app.post('/api/analyze/trends', authenticateToken, (req, res) => {
+    const { startDate, endDate, persona_id, lang } = req.body;
+
+    // Validate Dates
+    if (!startDate || !endDate) return res.status(400).json({ error: "Date range required" });
+
+    // 1. Verify Ownership of Persona
+    db.get("SELECT id FROM personas WHERE id = ? AND user_id = ?", [persona_id, req.user.id], (err, row) => {
+        if (err || !row) return res.status(403).json({ error: "Access denied to this profile" });
+
+        // Check Cache if period is fully in the past
+        const todayStr = new Date().toISOString().split('T')[0];
+        const isPast = endDate < todayStr;
+
+        if (isPast) {
+            db.get(`SELECT analysis_json FROM trend_reports WHERE persona_id=? AND start_date=? AND end_date=?`,
+                [persona_id, startDate, endDate],
+                (err, cacheRow) => {
+                    if (cacheRow) {
+                        try {
+                            // Fetch logs to support Heatmap even for cached reports
+                            fetchLogsAndProcess((logs, stats) => {
+                                res.json({ logs, stats, analysis: JSON.parse(cacheRow.analysis_json), cached: true });
+                            });
+                        } catch (e) {
+                            generateAndCache();
+                        }
+                    } else {
+                        generateAndCache(); // Cache Miss
+                    }
+                }
+            );
+        } else {
+            // Real-time (Active Period)
+            // SKIP AI analysis for current/unfinished periods per user request
+            fetchLogsAndProcess((logs, stats) => {
+                res.json({
+                    logs,
+                    stats,
+                    analysis: null,
+                    reason: 'current_period',
+                    message: "Analysis available after period ends"
+                });
+            });
+        }
+
+        function fetchLogsAndProcess(callback) {
+            const sql = `
+                SELECT created_at, stool_type, effort, symptoms, triggers, health_score 
+            FROM records 
+                WHERE persona_id = ?
+                AND created_at BETWEEN ? AND ?
+                    ORDER BY created_at ASC
+            `;
+
+            // Add one day to endDate to include it fully
+            const end = new Date(endDate);
+            end.setDate(end.getDate() + 1);
+            const endStr = end.toISOString().split('T')[0];
+
+            db.all(sql, [persona_id, startDate, endStr], (err, rows) => {
+                if (err) return res.status(500).json({ error: err.message });
+
+                // Aggregate Data
+                const logs = rows.map(r => ({
+                    date: r.created_at.split('T')[0],
+                    bristol: r.stool_type,
+                    health_score: r.health_score,
+                    effort: r.effort,
+                    tags: [
+                        ...(r.symptoms ? JSON.parse(r.symptoms) : []),
+                        ...(r.triggers ? JSON.parse(r.triggers) : [])
+                    ]
+                }));
+
+                const total = logs.length;
+                const avgBristol = total > 0 ? (logs.reduce((sum, r) => sum + (r.bristol || 0), 0) / total).toFixed(1) : 0;
+
+                callback(logs, { total, avgBristol });
+            });
+        }
+
+        function generateAndCache() {
+            fetchLogsAndProcess(async (logs, stats) => {
+                if (logs.length < 3) {
+                    return res.json({
+                        logs,
+                        stats,
+                        analysis: null,
+                        reason: 'insufficient_data',
+                        message: "Not enough data (min 3 logs)"
+                    });
+                }
+
+                const payload = {
+                    period: `${startDate} to ${endDate} `,
+                    stats,
+                    daily_logs: logs
+                };
+
+                // AI Call
+                const { analyzeTrends } = require('./ai_service');
+                try {
+                    const result = await analyzeTrends(payload, lang);
+                    const resultStr = JSON.stringify(result);
+
+                    // Cache if Past
+                    if (isPast) {
+                        db.run(`INSERT INTO trend_reports(persona_id, start_date, end_date, analysis_json) VALUES(?, ?, ?, ?)`,
+                            [persona_id, startDate, endDate, resultStr]);
+                    }
+
+                    res.json({ logs, stats, analysis: result, cached: false });
+                } catch (aiErr) {
+                    res.status(500).json({ error: "AI Analysis Failed" });
+                }
+            });
+        }
+    });
+});
+
+// Start server
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+});
