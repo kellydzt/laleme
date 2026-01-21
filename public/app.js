@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPersona = null;
     let personas = [];
     let pendingAnalysisPromise = null; // Track background AI task
+    let uploadTask = null; // Track active upload
 
     let dashboardData = {
         effort: null,
@@ -65,6 +66,8 @@ document.addEventListener('DOMContentLoaded', () => {
         dob: '',
         gender: 'male'
     };
+
+    let recordToDeleteOnClose = null; // Track rejected record for auto-deletion
 
     // --- I18N SYSTEM ---
     let appLang = localStorage.getItem('app_lang') || 'zh';
@@ -640,6 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showAnalysis(record) {
+        recordToDeleteOnClose = null; // Reset
         let data = null;
         let isPending = false;
 
@@ -656,6 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (!isPending && data.validity && (!data.validity.is_stool || data.validity.privacy_issue)) {
+            recordToDeleteOnClose = record.id; // Mark for deletion on close
             renderRejection(data.validity, record);
             if (analysisOverlay) {
                 analysisOverlay.classList.remove('hidden');
@@ -688,36 +693,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i class="ph-fill ph-warning-octagon" style="font-size:3.5rem; color:#ef4444; filter: drop-shadow(0 4px 12px rgba(239,68,68,0.3));"></i>
                  </div>
                  
-                 <div class="rejection-icon-wrapper" style="margin-bottom:20px;">
-                    <i class="ph-fill ph-warning-octagon" style="font-size:3.5rem; color:#ef4444; filter: drop-shadow(0 4px 12px rgba(239,68,68,0.3));"></i>
-                 </div>
-                 
+
+                     
                  <h3 style="font-size:1.4rem; margin-bottom:12px;">${tr('analysis_rejected')}</h3>
                  
                  <div style="background:rgba(255,255,255,0.05); padding:16px; border-radius:12px; margin-bottom:30px; border:1px solid rgba(255,255,255,0.1);">
                     <p style="color:var(--text-muted); line-height:1.5;">${reason}</p>
                  </div>
-
-                 <!-- Actions -->
-                 <div style="display:flex; flex-direction:column; gap:12px;">
-                     <button class="primary-btn close-btn" onclick="document.getElementById('analysis-overlay').classList.add('hidden')">
-                        ${tr('cancel')}
-                     </button>
-                     
-                     <button id="btn-delete-rejected" style="background:transparent; border:none; color:#ef4444; padding:12px; font-size:0.9rem; cursor:pointer; opacity:0.8; display:flex; align-items:center; justify-content:center; gap:6px;">
-                        <i class="ph-fill ph-trash"></i> ${tr('btn_delete_record')}
-                     </button>
-                 </div>
             </div>
         `;
 
         if (analysisText) analysisText.innerHTML = html;
-
-        // Bind Delete
-        setTimeout(() => {
-            const delBtn = document.getElementById('btn-delete-rejected');
-            if (delBtn) delBtn.onclick = () => deleteRecord(record.id);
-        }, 50);
+        // No delete button binding needed
     }
 
     function renderMedicalReport(data, record, isPending) {
@@ -899,8 +886,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 100);
     }
 
-    async function deleteRecord(id) {
-        if (!confirm(tr('delete_confirm'))) return;
+    async function deleteRecord(id, silent = false) {
+        if (!silent && !confirm(tr('delete_confirm'))) return;
         try {
             const res = await fetch(`/api/records/${id}`, { method: 'DELETE', headers: authHeaders });
             if (res.ok) {
@@ -994,7 +981,21 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Helper: Perform Actual Upload ---
+    // --- Helper: Perform Actual Upload ---
     async function performUpload(file, personaId) {
+        // 1. Show UI Immediately
+        resetDashboard();
+        dashboardOverlay.classList.remove('hidden');
+        // Reset Scroll
+        const card = dashboardOverlay.querySelector('.modal-card');
+        const body = dashboardOverlay.querySelector('.dashboard-body');
+        if (card) card.scrollTop = 0;
+        if (body) body.scrollTop = 0;
+
+        // Check scroll hint
+        if (window.triggerScrollCheck) setTimeout(window.triggerScrollCheck, 100);
+
+
         const formData = new FormData();
         formData.append('photo', file);
         formData.append('stool_type', 4);
@@ -1003,34 +1004,44 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('persona_id', personaId);
         formData.append('lang', appLang);
 
-        try {
-            const res = await fetch('/api/records', {
-                method: 'POST',
-                headers: { ...authHeaders },
-                body: formData
-            });
+        // 2. Start Upload (Async)
+        uploadTask = (async () => {
+            try {
+                const res = await fetch('/api/records', {
+                    method: 'POST',
+                    headers: { ...authHeaders },
+                    body: formData
+                });
 
-            if (res.status === 401 || res.status === 403) return logout();
+                if (res.status === 401 || res.status === 403) {
+                    logout();
+                    throw new Error("Auth failed");
+                }
 
-            if (res.ok) {
-                const result = await res.json();
-                currentRecordId = result.data.id;
-                currentRecordPath = result.data.image_path;
-                resetDashboard();
-                dashboardOverlay.classList.remove('hidden');
+                if (res.ok) {
+                    const result = await res.json();
+                    currentRecordId = result.data.id;
+                    currentRecordPath = result.data.image_path;
 
-                // Trigger AI
-                pendingAnalysisPromise = triggerAnalysisInBackground(currentRecordPath);
+                    // Trigger AI
+                    pendingAnalysisPromise = triggerAnalysisInBackground(currentRecordPath);
 
-                // Refresh list
-                fetchRecords();
-            } else {
-                alert("Upload failed");
+                    // Refresh list
+                    fetchRecords();
+
+                    return result.data;
+                } else {
+                    throw new Error("Upload failed");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Error uploading file. Please try again.");
+                dashboardOverlay.classList.add('hidden');
+                throw err;
+            } finally {
+                uploadTask = null; // Reset
             }
-        } catch (err) {
-            console.error(err);
-            alert("Error uploading file.");
-        }
+        })();
 
         photoInput.value = ''; // Reset
     }
@@ -1170,12 +1181,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 3. Save Details (Dashboard)
     if (saveDetailsBtn) saveDetailsBtn.addEventListener('click', async () => {
         // Show Spinner
         loadingOverlay.classList.add('visible');
 
         try {
+            // 0. Ensure Upload is Complete
+            if (!currentRecordId && uploadTask) {
+                await uploadTask;
+            }
+            if (!currentRecordId) throw new Error("No record ID available (Upload failed?)");
+
             const res = await fetch(`/api/records/${currentRecordId}`, {
                 method: 'PUT',
                 headers: {
@@ -1212,9 +1228,43 @@ document.addEventListener('DOMContentLoaded', () => {
         saveDetailsBtn.textContent = 'Save & View Analysis';
     });
 
+    // --- SCROLL HINT OVERLAY ---
+    const dashboardBody = document.querySelector('.dashboard-body');
+    const modalCard = document.querySelector('#dashboard-overlay .modal-card');
+
+    if (dashboardBody && modalCard) {
+        // Create Hint Element
+        let scrollHint = document.createElement('div');
+        scrollHint.className = 'scroll-more-hint';
+        scrollHint.innerHTML = '<i class="ph-bold ph-caret-double-down"></i>';
+        modalCard.appendChild(scrollHint);
+
+        function checkScroll() {
+            // Buffer of 30px
+            const isBottom = dashboardBody.scrollTop + dashboardBody.clientHeight >= dashboardBody.scrollHeight - 30;
+            const hasOverflow = dashboardBody.scrollHeight > dashboardBody.clientHeight;
+
+            if (!isBottom && hasOverflow) {
+                scrollHint.classList.add('visible');
+            } else {
+                scrollHint.classList.remove('visible');
+            }
+        }
+
+        dashboardBody.addEventListener('scroll', checkScroll);
+        window.addEventListener('resize', checkScroll);
+
+        // Expose to resetDashboard
+        window.triggerScrollCheck = checkScroll;
+    }
+
     if (closeBtn) {
         closeBtn.addEventListener('click', () => {
             if (analysisOverlay) analysisOverlay.classList.add('hidden');
+            if (recordToDeleteOnClose) {
+                deleteRecord(recordToDeleteOnClose, true); // Silent delete
+                recordToDeleteOnClose = null;
+            }
         });
     }
 

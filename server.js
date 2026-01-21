@@ -717,7 +717,7 @@ app.post('/api/analyze/trends', authenticateToken, (req, res) => {
 
         function fetchLogsAndProcess(callback) {
             const sql = `
-                SELECT created_at, stool_type, effort, symptoms, triggers, health_score 
+                SELECT created_at, stool_type, effort, symptoms, triggers, health_score, sensation, location_context, ai_analysis 
             FROM records 
                 WHERE persona_id = ?
                 AND created_at BETWEEN ? AND ?
@@ -733,16 +733,34 @@ app.post('/api/analyze/trends', authenticateToken, (req, res) => {
                 if (err) return res.status(500).json({ error: err.message });
 
                 // Aggregate Data
-                const logs = rows.map(r => ({
-                    date: r.created_at.split('T')[0],
-                    bristol: r.stool_type,
-                    health_score: r.health_score,
-                    effort: r.effort,
-                    tags: [
-                        ...(r.symptoms ? JSON.parse(r.symptoms) : []),
-                        ...(r.triggers ? JSON.parse(r.triggers) : [])
-                    ]
-                }));
+                const logs = rows.map(r => {
+                    let aiDetails = {};
+                    try {
+                        const json = r.ai_analysis ? (typeof r.ai_analysis === 'string' ? JSON.parse(r.ai_analysis) : r.ai_analysis) : {};
+                        aiDetails = {
+                            color: json.color?.primary,
+                            texture: {
+                                has_blood: json.texture?.has_blood,
+                                has_mucus: json.texture?.has_mucus,
+                                is_greasy: json.texture?.is_greasy
+                            }
+                        };
+                    } catch (e) { }
+
+                    return {
+                        date: r.created_at.split('T')[0],
+                        bristol: r.stool_type,
+                        health_score: r.health_score,
+                        effort: r.effort,
+                        sensation: r.sensation, // New
+                        context: r.location_context, // New
+                        features: aiDetails, // New AI extraction
+                        tags: [
+                            ...(r.symptoms ? JSON.parse(r.symptoms) : []),
+                            ...(r.triggers ? JSON.parse(r.triggers) : [])
+                        ]
+                    };
+                });
 
                 const total = logs.length;
                 const avgBristol = total > 0 ? (logs.reduce((sum, r) => sum + (r.bristol || 0), 0) / total).toFixed(1) : 0;

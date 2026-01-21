@@ -1583,3 +1583,37 @@ input:not(:checked)~.toggle-text.on {
     color: #ef4444;
     border-color: rgba(239, 68, 68, 0.3);
 }
+/* Scroll Hint */
+.scroll-more-hint {
+    position: absolute;
+    bottom: 85px; /* Button height + padding */
+    left: 0;
+    width: 100%;
+    height: 60px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: linear-gradient(to bottom, transparent, rgba(24, 24, 27, 0.9));
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    padding-bottom: 10px;
+    border-radius: 0 0 24px 24px; /* Match card radius roughly */
+}
+
+.scroll-more-hint.visible {
+    opacity: 1;
+}
+
+.scroll-more-hint i {
+    color: var(--accent-lime);
+    font-size: 1.5rem;
+    animation: bounce 1.5s infinite;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(5px); }
+}

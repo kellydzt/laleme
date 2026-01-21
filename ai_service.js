@@ -191,19 +191,30 @@ async function analyzeTrends(data, lang = 'en') {
         
         输入数据:
         ${JSON.stringify(data, null, 2)}
+        注意: 
+        - effort: 排便费力程度 (1=轻松, 2=正常, 3=困难, 4=受阻)
+        - sensation: 排空感 (complete=完全, incomplete=未排净)
+        - context: 场景 (home, work, hotel, public)
+        - features: AI分析的微观特征 (颜色、质地、是否有粘液/血)
 
         任务:
         1. 趋势发现: 查看时间轴。是否有便秘 (1-2型) 或 腹泻 (6-7型) 的时期？
-        2. 相关性侦探: 查看 'tags' 和 'triggers' 与 'bristol' 分数的对比。
-           - 例如: '酒精' 是否导致第二天的 6/7 型？
-           - 例如: '辛辣食物' 是否导致 '灼烧感'？
-        3. 评分: 根据一致性给出评分 (A+, A, B, C, D)。
+        2. 相关性侦探: 
+           - 饮食: '酒精' 是否导致第二天的 6/7 型？'辛辣食物' 是否导致 '灼烧感'？
+           - 场景: 是否在 'work' 或 'public' 场景下更容易出现 'incomplete' (排不净) 或 'effort' (费力) 升高？
+           - 努力度: 高努力度 (3-4) 是否总是伴随干硬大便 (1-2型)？
+        3. 健康评分 (A-D): 
+           - A+/A: 形态主要为 3-4型，且无出血/粘液。
+           - B: 偶尔 1-2 或 5型。
+           - C: 频繁的便秘/腹泻，或频繁的排不净感。
+           - D: 出现血、持续的粘液、或长期的极端形态。
+        4. 被动建议: 基于发现给出简短建议 (例如: "在公司时请多喝水", "注意乳制品摄入").
 
         输出格式 (仅JSON):
         请保留 Key 为英文，Value 为中文。
         {
           "grade": "A+" | "A" | "B" | "C" | "D",
-          "summary": "一段中文总结，概括这段时期的状况",
+          "summary": "一段中文总结，概括这段时期的状况，提及显著的场景或习惯影响",
           "correlations": [
             { "cause": "string (中文)", "effect": "string (中文)", "confidence": "High" | "Medium" }
           ],
@@ -221,22 +232,28 @@ async function analyzeTrends(data, lang = 'en') {
         
         INPUT DATA:
         ${JSON.stringify(data, null, 2)}
+        NOTE:
+        - effort: Straining level (1=Easy, 2=Normal, 3=Hard, 4=Blocked)
+        - sensation: Evacuation sensation (complete vs incomplete)
+        - context: Location (home, work, hotel, public)
+        - features: AI analyzed textures (color, blood, mucus, etc.)
 
         TASKS:
-        1. TREND SPOTTING: Look at the timeline. Are there periods of constipation (Type 1-2) or diarrhea (Type 6-7)?
-        2. CORRELATION DETECTIVE: Look at the 'tags' and 'triggers' vs 'bristol' score. 
-           - Example: Does 'Alcohol' lead to Type 6/7 next day? 
-           - Example: Does 'Spicy Food' lead to 'burning' sensation?
-        3. GRADING: Assign a Grade (A+, A, B, C, D) based on consistency.
-           - A+/A = Mostly Type 3-4.
+        1. TREND SPOTTING: Look at the timeline for Constipation (Type 1-2) or Diarrhea (Type 6-7).
+        2. CORRELATION DETECTIVE: 
+           - Diet: Does 'Alcohol' lead to Type 6/7? Does 'Spicy' lead to burning?
+           - Context: Is 'incomplete' sensation or high 'effort' more common at 'work' or 'public' restrooms?
+           - Effort: Does high effort (3-4) align with hard stool?
+        3. GRADING (A-D):
+           - A+/A = Mostly Type 3-4, no blood/mucus.
            - B = Occasional 1-2 or 5.
-           - C = Frequent 1-2 or 6.
-           - D = Type 7 or Blood.
+           - C = Frequent issues or frequent 'incomplete' sensation.
+           - D = Blood, mucus, or chronic extreme types.
 
         OUTPUT SCHEMA (JSON ONLY):
         {
           "grade": "A+" | "A" | "B" | "C" | "D",
-          "summary": "string summarizing the period",
+          "summary": "string summarizing the period, mentioning key context/habit factors",
           "correlations": [
             { "cause": "string", "effect": "string", "confidence": "High" | "Medium" }
           ],
