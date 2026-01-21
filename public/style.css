@@ -397,6 +397,7 @@ body {
     gap: 16px;
     max-height: 85vh;
     animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
 }
 
 .dashboard-card {
@@ -454,6 +455,8 @@ body {
     gap: 24px;
     padding: 4px;
     background: transparent;
+    flex: 1;
+    min-height: 0;
 }
 
 /* Dashboard Sections */
@@ -1583,23 +1586,26 @@ input:not(:checked)~.toggle-text.on {
     color: #ef4444;
     border-color: rgba(239, 68, 68, 0.3);
 }
+
 /* Scroll Hint */
 .scroll-more-hint {
     position: absolute;
-    bottom: 85px; /* Button height + padding */
+    bottom: 110px;
+    /* Safe distance above button */
     left: 0;
     width: 100%;
     height: 60px;
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    background: linear-gradient(to bottom, transparent, rgba(24, 24, 27, 0.9));
-    z-index: 10;
+    background: linear-gradient(to bottom, transparent, rgba(24, 24, 27, 1));
+    z-index: 20;
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.3s ease;
     padding-bottom: 10px;
-    border-radius: 0 0 24px 24px; /* Match card radius roughly */
+    border-radius: 0 0 24px 24px;
+    /* Match card radius roughly */
 }
 
 .scroll-more-hint.visible {
@@ -1610,10 +1616,17 @@ input:not(:checked)~.toggle-text.on {
     color: var(--accent-lime);
     font-size: 1.5rem;
     animation: bounce 1.5s infinite;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 
 @keyframes bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(5px); }
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(5px);
+    }
 }

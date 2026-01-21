@@ -148,7 +148,14 @@ document.addEventListener('DOMContentLoaded', () => {
             val_unknown: 'Unknown',
             val_no_tags: 'No tags',
             // Edit Profile Modal
+            create_profile_title: 'Create Profile',
             edit_profile_title: 'Edit Profile',
+            val_boy: 'Boy',
+            val_girl: 'Girl',
+            btn_next: 'Next',
+            info_baby: 'Analyzed as <b>Baby (< 1y)</b>',
+            info_adult: 'Analyzed as <b>Adult/Teen</b>',
+            btn_create_profile: 'Create Profile',
             update_details_for: 'Update details for',
             change_photo: 'Change Photo',
             crop_title: 'Adjust Photo',
@@ -178,6 +185,9 @@ document.addEventListener('DOMContentLoaded', () => {
             val_none: 'None',
             val_probiotics: 'Probiotics',
             val_antibiotics: 'Antibiotics',
+            val_iron: 'Iron Supps',
+            val_no_gallbladder: 'No Gallbladder',
+            val_constipation: 'Constipation',
             val_laxatives: 'Laxatives',
             val_fiber: 'Fiber Supp.',
             // Common Tags (Mapping)
@@ -272,7 +282,14 @@ document.addEventListener('DOMContentLoaded', () => {
             val_unknown: '未知',
             val_no_tags: '无标签',
             // Edit Profile Modal
+            create_profile_title: '创建新成员',
             edit_profile_title: '编辑资料',
+            val_boy: '男宝',
+            val_girl: '女宝',
+            btn_next: '下一步',
+            info_baby: '识别为 <b>宝宝 (1岁以下)</b>',
+            info_adult: '识别为 <b>成人/青少年</b>',
+            btn_create_profile: '创建档案',
             update_details_for: '更新资料：',
             change_photo: '更换照片',
             crop_title: '调整照片',
@@ -302,6 +319,9 @@ document.addEventListener('DOMContentLoaded', () => {
             val_none: '无',
             val_probiotics: '益生菌',
             val_antibiotics: '抗生素',
+            val_iron: '补铁剂',
+            val_no_gallbladder: '无胆囊',
+            val_constipation: '便秘',
             val_laxatives: '泻药',
             val_fiber: '纤维补充剂',
             // Common Tags (Mapping - Simplified for Zh)
@@ -1241,9 +1261,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- SCROLL HINT OVERLAY ---
     const dashboardBody = document.querySelector('.dashboard-body');
-    const modalCard = document.querySelector('#dashboard-overlay .modal-card');
+    const modalCard = document.querySelector('#data-dashboard-overlay .modal-card');
 
-    if (dashboardBody && modalCard) {
+    if (dashboardBody && modalCard && !modalCard.querySelector('.scroll-more-hint')) {
         // Create Hint Element
         let scrollHint = document.createElement('div');
         scrollHint.className = 'scroll-more-hint';

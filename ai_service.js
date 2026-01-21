@@ -13,6 +13,20 @@ function fileToGenerativePart(path, mimeType) {
   };
 }
 
+// Helper to safely join array or parse JSON string
+function safeJoin(val) {
+  if (!val) return "";
+  if (Array.isArray(val)) return val.join(", ");
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed.join(", ");
+    } catch (e) { }
+    return val; // Return raw string if not JSON array
+  }
+  return "";
+}
+
 async function analyzeImage(imagePath, context = null, lang = 'en') {
   if (!process.env.GEMINI_API_KEY) {
     console.log("No API Key provided, returning mock analysis.");
@@ -56,8 +70,8 @@ async function analyzeImage(imagePath, context = null, lang = 'en') {
       }
       // ADULT LOGIC (> 12 years)
       else {
-        const health = (context.adult_health || []).join(", ");
-        const meds = (context.adult_meds || []).join(", ");
+        const health = safeJoin(context.adult_health);
+        const meds = safeJoin(context.adult_meds);
 
         if (lang === 'zh') {
           contextInstruction = `

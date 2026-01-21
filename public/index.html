@@ -242,28 +242,28 @@
         <div class="modal-card">
             <div class="modal-header">
                 <i class="ph-fill ph-user-plus"></i>
-                <h3>Create Profile</h3>
+                <h3 data-i18n="create_profile_title">Create Profile</h3>
             </div>
             <div class="modal-body" style="padding: 20px 0;">
 
                 <!-- STEP 1: BASICS -->
                 <div id="wizard-step-1" class="wizard-step">
                     <div class="input-group">
-                        <label>Nickname</label>
+                        <label data-i18n="lbl_nickname">Nickname</label>
                         <input type="text" id="persona-nickname" placeholder="e.g. Baby Joe" class="text-input">
                     </div>
                     <div class="input-group">
-                        <label>Date of Birth</label>
+                        <label data-i18n="lbl_dob">Date of Birth</label>
                         <input type="date" id="persona-dob" class="text-input">
                     </div>
                     <div class="input-group">
-                        <label>Gender</label>
+                        <label data-i18n="lbl_gender">Gender</label>
                         <div class="segment-control" id="gender-control">
-                            <div class="segment-option selected" data-value="male">Boy</div>
-                            <div class="segment-option" data-value="female">Girl</div>
+                            <div class="segment-option selected" data-value="male" data-i18n="val_boy">Boy</div>
+                            <div class="segment-option" data-value="female" data-i18n="val_girl">Girl</div>
                         </div>
                     </div>
-                    <button class="primary-btn" id="btn-wizard-next">Next <i
+                    <button class="primary-btn" id="btn-wizard-next"><span data-i18n="btn_next">Next</span> <i
                             class="ph-bold ph-arrow-right"></i></button>
                 </div>
 
@@ -271,49 +271,52 @@
                 <div id="wizard-step-baby" class="wizard-step hidden">
                     <div class="info-box">
                         <i class="ph-fill ph-baby"></i>
-                        <span>Analyzed as <b>Baby (< 1y)</b></span>
+                        <span data-i18n="info_baby">Analyzed as <b>Baby (< 1y)</b></span>
                     </div>
                     <div class="input-group">
-                        <label>Feeding Method (Crucial)</label>
+                        <label data-i18n="lbl_feeding">Feeding Method (Crucial)</label>
                         <div class="grid-options" id="baby-feeding-options">
-                            <div class="grid-option" data-value="Breast">🤱 Breast</div>
-                            <div class="grid-option" data-value="Formula">🍼 Formula</div>
-                            <div class="grid-option" data-value="Mix">🧪 Mix</div>
+                            <div class="grid-option" data-value="Breast" data-i18n="val_breast">🤱 Breast</div>
+                            <div class="grid-option" data-value="Formula" data-i18n="val_bottle">🍼 Formula</div>
+                            <div class="grid-option" data-value="Mix" data-i18n="val_mixed">🧪 Mix</div>
                         </div>
                     </div>
                     <div class="input-group">
-                        <label>Current Stage</label>
+                        <label data-i18n="lbl_stage">Current Stage</label>
                         <div class="grid-options" id="baby-stage-options">
-                            <div class="grid-option" data-value="New">👶 New</div>
-                            <div class="grid-option" data-value="Solid">🥕 Solids</div>
+                            <div class="grid-option" data-value="New" data-i18n="val_newborn">👶 New</div>
+                            <div class="grid-option" data-value="Solid" data-i18n="val_solids">🥕 Solids</div>
                         </div>
                     </div>
-                    <button class="primary-btn" id="btn-create-baby">Create Profile</button>
+                    <button class="primary-btn" id="btn-create-baby" data-i18n="btn_create_profile">Create
+                        Profile</button>
                 </div>
 
                 <!-- STEP 2: ADULT CONTEXT -->
                 <div id="wizard-step-adult" class="wizard-step hidden">
                     <div class="info-box adult">
                         <i class="ph-fill ph-user"></i>
-                        <span>Analyzed as <b>Adult/Teen</b></span>
+                        <span data-i18n="info_adult">Analyzed as <b>Adult/Teen</b></span>
                     </div>
                     <div class="input-group">
-                        <label>Health Conditions (Optional)</label>
+                        <label data-i18n="lbl_conditions">Health Conditions (Optional)</label>
                         <div class="tag-cloud" id="adult-health-tags">
-                            <span class="tag" data-value="IBS">IBS</span>
-                            <span class="tag" data-value="Lactose">Lactose Intolerant</span>
-                            <span class="tag" data-value="NoGallbladder">No Gallbladder</span>
-                            <span class="tag" data-value="Constipation">Constipation</span>
+                            <span class="tag" data-value="IBS" data-i18n="val_ibs">IBS</span>
+                            <span class="tag" data-value="Lactose" data-i18n="val_lactose">Lactose Intolerant</span>
+                            <span class="tag" data-value="NoGallbladder" data-i18n="val_no_gallbladder">No
+                                Gallbladder</span>
+                            <span class="tag" data-value="Constipation" data-i18n="val_constipation">Constipation</span>
                         </div>
                     </div>
                     <div class="input-group">
-                        <label>Medications</label>
+                        <label data-i18n="lbl_meds">Medications</label>
                         <div class="tag-cloud" id="adult-meds-tags">
-                            <span class="tag" data-value="Iron">Iron Supps</span>
-                            <span class="tag" data-value="Antibiotics">Antibiotics</span>
+                            <span class="tag" data-value="Iron" data-i18n="val_iron">Iron Supps</span>
+                            <span class="tag" data-value="Antibiotics" data-i18n="val_antibiotics">Antibiotics</span>
                         </div>
                     </div>
-                    <button class="primary-btn" id="btn-create-adult">Create Profile</button>
+                    <button class="primary-btn" id="btn-create-adult" data-i18n="btn_create_profile">Create
+                        Profile</button>
                 </div>
 
             </div>
