@@ -8,7 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Phosphor Icons (Local) -->
+    <link rel="stylesheet" href="lib/phosphor/src/regular/style.css">
+    <link rel="stylesheet" href="lib/phosphor/src/bold/style.css">
+    <link rel="stylesheet" href="lib/phosphor/src/fill/style.css">
+    <link rel="stylesheet" href="lib/phosphor/src/duotone/style.css">
+    <!-- CropperJS (Local) -->
+    <link rel="stylesheet" href="lib/cropperjs/cropper.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -83,12 +89,78 @@
         </div>
     </div>
 
+    <!-- CROP MODAL (Premium Mobile Design) -->
+    <div id="crop-modal" class="overlay hidden" style="z-index: 3000; background: #000;">
+        <div class="crop-container" style="display: flex; flex-direction: column; height: 100%; width: 100%;">
+
+            <!-- Header -->
+            <div
+                style="padding: 20px; color: white; display: flex; justify-content: space-between; align-items: center; z-index: 2;">
+                <h3 style="margin: 0; font-size: 1.2rem;" data-i18n="crop_title">Adjust Photo</h3>
+                <button onclick="closeCropModal()"
+                    style="background: none; border: none; color: white; font-size: 1.5rem;"><i
+                        class="ph-bold ph-x"></i></button>
+            </div>
+
+            <!-- Crop Area -->
+            <div style="flex: 1; position: relative; overflow: hidden; background: #000;">
+                <img id="crop-image" src="" style="max-width: 100%; display: block;">
+            </div>
+
+            <!-- Controls Toolbar -->
+            <div style="padding: 20px; background: #000; display: flex; flex-direction: column; gap: 20px; z-index: 2;">
+
+                <!-- Rotation Controls -->
+                <div style="display: flex; justify-content: center; gap: 40px;">
+                    <button class="icon-circle" id="btn-rotate-left"
+                        style="width: 50px; height: 50px; background: rgba(255,255,255,0.1); color: white;">
+                        <i class="ph-bold ph-arrow-counter-clockwise"></i>
+                    </button>
+                    <button class="icon-circle" id="btn-rotate-right"
+                        style="width: 50px; height: 50px; background: rgba(255,255,255,0.1); color: white;">
+                        <i class="ph-bold ph-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display: flex; gap: 16px;">
+                    <button class="btn-cancel" onclick="closeCropModal()"
+                        style="flex: 1; padding: 16px; font-size: 1rem; border: 1px solid rgba(255,255,255,0.2); color: white; background: transparent; border-radius: 12px;"
+                        data-i18n="cancel">Cancel</button>
+                    <button class="btn-primary" id="btn-confirm-crop"
+                        style="flex: 1; padding: 16px; font-size: 1rem; border-radius: 12px; background: var(--accent-lime); color: black; font-weight: 700;"
+                        data-i18n="confirm">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Modal (Expanded) -->
     <div id="edit-overlay" class="overlay hidden">
         <div class="modal-card" style="max-height: 85vh; overflow-y: auto;">
             <div class="modal-header">
-                <h3>Edit Profile</h3>
-                <span class="sub-text">Update details for <span id="edit-name-display"></span></span>
+                <div
+                    style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div class="avatar-upload-container" style="position: relative; cursor: pointer;"
+                        onclick="document.getElementById('edit-avatar-upload').click()">
+                        <div id="edit-avatar-preview" class="avatar-circle-large"
+                            style="width: 80px; height: 80px; font-size: 2rem; border: 2px dashed var(--border-color);">
+                            <span id="edit-avatar-initial">?</span>
+                            <img id="edit-avatar-img" src=""
+                                style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: none;">
+                        </div>
+                        <div class="camera-icon-overlay"
+                            style="position: absolute; bottom: 0; right: 0; background: var(--accent-blue); color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 2px solid var(--card-bg);">
+                            <i class="ph-bold ph-camera"></i>
+                        </div>
+                    </div>
+                    <input type="file" id="edit-avatar-upload" accept="image/*" style="display: none;">
+                    <span style="font-size: 0.8rem; color: var(--accent-blue);" data-i18n="change_photo">Change
+                        Photo</span>
+                </div>
+                <h3 data-i18n="edit_profile_title">Edit Profile</h3>
+                <span class="sub-text"><span data-i18n="update_details_for">Update details for</span> <span
+                        id="edit-name-display"></span></span>
             </div>
 
             <div class="modal-body" style="display:flex; flex-direction:column; gap:24px;">
@@ -96,45 +168,48 @@
 
                 <!-- Basic Info -->
                 <div class="input-group">
-                    <label>Nickname</label>
+                    <label data-i18n="lbl_nickname">Nickname</label>
                     <input type="text" id="edit-nickname" class="text-input" placeholder="e.g. Baby Q">
                 </div>
 
                 <div class="input-group">
-                    <label>Date of Birth</label>
+                    <label data-i18n="lbl_dob">Date of Birth</label>
                     <input type="date" id="edit-dob" class="text-input">
                 </div>
 
                 <!-- Gender -->
                 <div class="input-group">
-                    <label>Gender</label>
+                    <label data-i18n="lbl_gender">Gender</label>
                     <div id="edit-gender-control" class="segment-control">
-                        <div class="segment-option selected" data-value="male">Male</div>
-                        <div class="segment-option" data-value="female">Female</div>
+                        <div class="segment-option selected" data-value="male" data-i18n="val_male">Male</div>
+                        <div class="segment-option" data-value="female" data-i18n="val_female">Female</div>
                     </div>
                 </div>
 
                 <!-- Baby Options (Hidden by default) -->
                 <div id="edit-baby-section" class="hidden">
                     <label class="section-label"
-                        style="display:block; margin-bottom:12px; color:var(--text-main); font-weight:600;">Baby
+                        style="display:block; margin-bottom:12px; color:var(--text-main); font-weight:600;"
+                        data-i18n="lbl_baby_specs">Baby
                         Specifics</label>
 
                     <div style="margin-bottom:16px;">
-                        <label style="font-size:0.8rem; color:var(--text-muted);">Feeding Method</label>
+                        <label style="font-size:0.8rem; color:var(--text-muted);" data-i18n="lbl_feeding">Feeding
+                            Method</label>
                         <div class="grid-options" id="edit-baby-feeding">
-                            <div class="grid-option" data-value="breast">Breast</div>
-                            <div class="grid-option" data-value="bottle">Formula</div>
-                            <div class="grid-option" data-value="mixed">Mixed</div>
+                            <div class="grid-option" data-value="breast" data-i18n="val_breast">Breast</div>
+                            <div class="grid-option" data-value="bottle" data-i18n="val_bottle">Formula</div>
+                            <div class="grid-option" data-value="mixed" data-i18n="val_mixed">Mixed</div>
                         </div>
                     </div>
 
                     <div>
-                        <label style="font-size:0.8rem; color:var(--text-muted);">Current Stage</label>
+                        <label style="font-size:0.8rem; color:var(--text-muted);" data-i18n="lbl_stage">Current
+                            Stage</label>
                         <div class="grid-options" id="edit-baby-stage">
-                            <div class="grid-option" data-value="newborn">Newborn</div>
-                            <div class="grid-option" data-value="solids">Solids</div>
-                            <div class="grid-option" data-value="weaning">Weaning</div>
+                            <div class="grid-option" data-value="newborn" data-i18n="val_newborn">Newborn</div>
+                            <div class="grid-option" data-value="solids" data-i18n="val_solids">Solids</div>
+                            <div class="grid-option" data-value="weaning" data-i18n="val_weaning">Weaning</div>
                         </div>
                     </div>
                 </div>
@@ -142,39 +217,45 @@
                 <!-- Adult Options (Hidden by default) -->
                 <div id="edit-adult-section" class="hidden">
                     <label class="section-label"
-                        style="display:block; margin-bottom:12px; color:var(--text-main); font-weight:600;">Health
+                        style="display:block; margin-bottom:12px; color:var(--text-main); font-weight:600;"
+                        data-i18n="lbl_health_factors">Health
                         Factors</label>
 
                     <div style="margin-bottom:16px;">
-                        <label style="font-size:0.8rem; color:var(--text-muted);">Conditions</label>
+                        <label style="font-size:0.8rem; color:var(--text-muted);"
+                            data-i18n="lbl_conditions">Conditions</label>
                         <div class="tags-container" id="edit-adult-health">
-                            <div class="tag" data-value="ibs">IBS</div>
-                            <div class="tag" data-value="lactose">Lactose Intolerance</div>
-                            <div class="tag" data-value="celiac">Celiac</div>
-                            <div class="tag" data-value="none">None</div>
+                            <div class="tag" data-value="ibs" data-i18n="val_ibs">IBS</div>
+                            <div class="tag" data-value="lactose" data-i18n="val_lactose">Lactose Intolerance</div>
+                            <div class="tag" data-value="celiac" data-i18n="val_celiac">Celiac</div>
+                            <div class="tag" data-value="none" data-i18n="val_none">None</div>
                         </div>
                     </div>
 
                     <div>
-                        <label style="font-size:0.8rem; color:var(--text-muted);">Medications</label>
+                        <label style="font-size:0.8rem; color:var(--text-muted);"
+                            data-i18n="lbl_meds">Medications</label>
                         <div class="tags-container" id="edit-adult-meds">
-                            <div class="tag" data-value="probiotics">Probiotics</div>
-                            <div class="tag" data-value="antibiotics">Antibiotics</div>
-                            <div class="tag" data-value="laxatives">Laxatives</div>
-                            <div class="tag" data-value="fiber">Fiber Supp.</div>
+                            <div class="tag" data-value="probiotics" data-i18n="val_probiotics">Probiotics</div>
+                            <div class="tag" data-value="antibiotics" data-i18n="val_antibiotics">Antibiotics</div>
+                            <div class="tag" data-value="laxatives" data-i18n="val_laxatives">Laxatives</div>
+                            <div class="tag" data-value="fiber" data-i18n="val_fiber">Fiber Supp.</div>
                         </div>
                     </div>
                 </div>
 
             </div>
 
-            <button id="btn-save-edit" class="primary-btn">Save Changes</button>
+            <button id="btn-save-edit" class="primary-btn" data-i18n="btn_save_changes">Save Changes</button>
             <button class="close-btn secondary-btn"
-                onclick="document.getElementById('edit-overlay').classList.add('hidden')">Cancel</button>
+                onclick="document.getElementById('edit-overlay').classList.add('hidden')"
+                data-i18n="cancel">Cancel</button>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Scripts -->
+    <script src="lib/cropperjs/cropper.min.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 
 </html>

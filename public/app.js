@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- I18N SYSTEM ---
-    let appLang = localStorage.getItem('app_lang') || 'en';
+    let appLang = localStorage.getItem('app_lang') || 'zh';
     const translations = {
         en: {
             // Dashboard
@@ -144,6 +144,39 @@ document.addEventListener('DOMContentLoaded', () => {
             lbl_diarrhea: 'Diarrhea',
             val_unknown: 'Unknown',
             val_no_tags: 'No tags',
+            // Edit Profile Modal
+            edit_profile_title: 'Edit Profile',
+            update_details_for: 'Update details for',
+            change_photo: 'Change Photo',
+            crop_title: 'Adjust Photo',
+            confirm: 'Confirm',
+            cancel: 'Cancel',
+            lbl_nickname: 'Nickname',
+            lbl_dob: 'Date of Birth',
+            lbl_gender: 'Gender',
+            lbl_baby_specs: 'Baby Specifics',
+            lbl_feeding: 'Feeding Method',
+            lbl_stage: 'Current Stage',
+            lbl_health_factors: 'Health Factors',
+            lbl_conditions: 'Conditions',
+            lbl_meds: 'Medications',
+            btn_save_changes: 'Save Changes',
+            val_male: 'Male',
+            val_female: 'Female',
+            val_breast: 'Breast',
+            val_bottle: 'Formula',
+            val_mixed: 'Mixed',
+            val_newborn: 'Newborn',
+            val_solids: 'Solids',
+            val_weaning: 'Weaning',
+            val_ibs: 'IBS',
+            val_lactose: 'Lactose Intolerance',
+            val_celiac: 'Celiac',
+            val_none: 'None',
+            val_probiotics: 'Probiotics',
+            val_antibiotics: 'Antibiotics',
+            val_laxatives: 'Laxatives',
+            val_fiber: 'Fiber Supp.',
             // Common Tags (Mapping)
             tag_pain: 'Pain',
             tag_bloating: 'Bloating',
@@ -235,7 +268,40 @@ document.addEventListener('DOMContentLoaded', () => {
             lbl_diarrhea: '腹泻',
             val_unknown: '未知',
             val_no_tags: '无标签',
-            // Common Tags (Mapping)
+            // Edit Profile Modal
+            edit_profile_title: '编辑资料',
+            update_details_for: '更新资料：',
+            change_photo: '更换照片',
+            crop_title: '调整照片',
+            confirm: '确认',
+            cancel: '取消',
+            lbl_nickname: '昵称',
+            lbl_dob: '出生日期',
+            lbl_gender: '性别',
+            lbl_baby_specs: '宝宝专属',
+            lbl_feeding: '喂养方式',
+            lbl_stage: '当前阶段',
+            lbl_health_factors: '健康因素',
+            lbl_conditions: '健康状况',
+            lbl_meds: '药物/补剂',
+            btn_save_changes: '保存更改',
+            val_male: '男',
+            val_female: '女',
+            val_breast: '母乳',
+            val_bottle: '配方奶',
+            val_mixed: '混合喂养',
+            val_newborn: '新生儿',
+            val_solids: '辅食期',
+            val_weaning: '断奶期',
+            val_ibs: 'IBS (肠易激)',
+            val_lactose: '乳糖不耐受',
+            val_celiac: '乳糜泻',
+            val_none: '无',
+            val_probiotics: '益生菌',
+            val_antibiotics: '抗生素',
+            val_laxatives: '泻药',
+            val_fiber: '纤维补充剂',
+            // Common Tags (Mapping - Simplified for Zh)
             tag_pain: '疼痛',
             tag_bloating: '胀气',
             tag_burning: '灼烧感',
@@ -311,6 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.removeItem('user_role');
         window.location.href = 'login.html';
     }
+    window.logout = logout; // Expose for inline onclick
 
     async function loadPersonas() {
         try {
@@ -590,12 +657,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!isPending && data.validity && (!data.validity.is_stool || data.validity.privacy_issue)) {
             renderRejection(data.validity, record);
-            if (analysisOverlay) analysisOverlay.classList.remove('hidden');
+            if (analysisOverlay) {
+                analysisOverlay.classList.remove('hidden');
+                // Force scroll reset after visible
+                const card = analysisOverlay.querySelector('.modal-card');
+                const body = analysisOverlay.querySelector('.modal-body');
+                if (card) card.scrollTop = 0;
+                if (body) body.scrollTop = 0;
+            }
             return;
         }
 
         renderMedicalReport(data, record, isPending);
-        if (analysisOverlay) analysisOverlay.classList.remove('hidden');
+        if (analysisOverlay) {
+            analysisOverlay.classList.remove('hidden');
+            // Force scroll reset after visible
+            const card = analysisOverlay.querySelector('.modal-card');
+            const body = analysisOverlay.querySelector('.modal-body');
+            if (card) card.scrollTop = 0;
+            if (body) body.scrollTop = 0;
+        }
     }
 
     function renderRejection(validity, record) {
@@ -1131,11 +1212,16 @@ document.addEventListener('DOMContentLoaded', () => {
         saveDetailsBtn.textContent = 'Save & View Analysis';
     });
 
-    if (closeBtn) closeBtn.addEventListener('click', () => analysisOverlay.classList.add('hidden'));
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            if (analysisOverlay) analysisOverlay.classList.add('hidden');
+        });
+    }
 
     // --- INITIAL START ---
-    if (window.location.pathname.endsWith('profiles.html')) {
+    if (window.location.pathname.endsWith('settings.html')) {
         loadProfilesForManagement();
+        setupEditInteractions();
 
         // Bind Add New
         const btnAddNew = document.getElementById('btn-add-new');
@@ -1145,50 +1231,76 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('edit-name-display').textContent = 'New Profile';
             document.getElementById('edit-nickname').value = '';
             document.getElementById('edit-dob').value = '';
+
+            // Reset Avatar UI
+            document.getElementById('edit-avatar-upload').value = '';
+            document.getElementById('edit-avatar-img').style.display = 'none';
+            document.getElementById('edit-avatar-initial').style.display = 'block';
+            document.getElementById('edit-avatar-initial').textContent = '?';
+
             document.getElementById('edit-overlay').classList.remove('hidden');
         };
 
-        // Bind Save Edit (Handles Create & Update)
+        // Bind Save Edit (Handles Create & Update) - FormData Version
         document.getElementById('btn-save-edit').onclick = async () => {
             const id = document.getElementById('edit-id').value;
             const nickname = document.getElementById('edit-nickname').value;
             const dob = document.getElementById('edit-dob').value;
+
+            // Form Data for File Upload
+            const formData = new FormData();
+            formData.append('nickname', nickname);
+            formData.append('dob', dob);
 
             // Gather Extras
             const genderEl = document.querySelector('#edit-gender-control .selected');
             const feedingEl = document.querySelector('#edit-baby-feeding .selected');
             const stageEl = document.querySelector('#edit-baby-stage .selected');
 
-            const healthTags = Array.from(document.querySelectorAll('#edit-adult-health .tag.selected')).map(e => e.dataset.value);
-            const medsTags = Array.from(document.querySelectorAll('#edit-adult-meds .tag.selected')).map(e => e.dataset.value);
+            formData.append('gender', genderEl ? genderEl.dataset.value : 'unknown');
+            if (feedingEl) formData.append('baby_feeding', feedingEl.dataset.value);
+            if (stageEl) formData.append('baby_stage', stageEl.dataset.value);
 
-            if (!nickname || !dob) return alert("Name and DOB are required");
+            // Health (JSON stringify required for text fields if backend expects string)
+            // But since we use multipart, we can append arrays directly if backend handles it, 
+            // OR stringify them. Our backend expects JSON string in 'adult_health' TEXT column.
+            const healthTags = Array.from(document.querySelectorAll('#edit-adult-health .selected')).map(el => el.dataset.value);
+            const medTags = Array.from(document.querySelectorAll('#edit-adult-meds .selected')).map(el => el.dataset.value);
 
-            const payload = {
-                nickname,
-                dob,
-                gender: genderEl ? genderEl.dataset.value : 'unknown',
-                baby_feeding: feedingEl ? feedingEl.dataset.value : null,
-                baby_stage: stageEl ? stageEl.dataset.value : null,
-                adult_health: healthTags,
-                adult_meds: medsTags
-            };
+            formData.append('adult_health', JSON.stringify(healthTags));
+            formData.append('adult_meds', JSON.stringify(medTags));
 
-            const isNew = !id;
-            const url = isNew ? '/api/personas' : `/api/personas/${id}`;
-            const method = isNew ? 'POST' : 'PUT';
+            // File
+            // Priority: Cropped Blob > Original Input
+            if (currentAvatarBlob) {
+                // Filename is arbitrary
+                formData.append('avatar', currentAvatarBlob, 'avatar.jpg');
+            } else {
+                const fileInput = document.getElementById('edit-avatar-upload');
+                if (fileInput.files[0]) {
+                    formData.append('avatar', fileInput.files[0]);
+                }
+            }
+
+            const method = id ? 'PUT' : 'POST';
+            const url = id ? `/api/personas/${id}` : '/api/personas';
 
             try {
+                // Fetch automatically sets Content-Type to multipart/form-data with boundary when body is FormData
+                // We just need Authorization header
                 const res = await fetch(url, {
                     method: method,
-                    headers: { 'Content-Type': 'application/json', ...authHeaders },
-                    body: JSON.stringify(payload)
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
                 });
+
                 if (res.ok) {
                     document.getElementById('edit-overlay').classList.add('hidden');
                     loadProfilesForManagement();
                 } else {
-                    alert("Operation failed");
+                    alert('Failed to save profile');
                 }
             } catch (e) { console.error(e); }
         };
@@ -1252,6 +1364,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // DOB Change Trigger
         document.getElementById('edit-dob').addEventListener('change', (e) => toggleEditSections(e.target.value));
+
+        // File Input -> Crop Modal
+        document.getElementById('edit-avatar-upload').addEventListener('change', function (e) {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function (evt) {
+                    // Open Crop Modal
+                    const cropImg = document.getElementById('crop-image');
+                    cropImg.src = evt.target.result;
+                    document.getElementById('crop-modal').classList.remove('hidden');
+
+                    // Init Cropper
+                    if (window.cropper) window.cropper.destroy();
+                    window.cropper = new Cropper(cropImg, {
+                        aspectRatio: 1,
+                        viewMode: 1,
+                        dragMode: 'move', // Default to moving canvas on touch
+                        autoCropArea: 0.8,
+                        restore: false,
+                        guides: false,
+                        center: false,
+                        highlight: false,
+                        cropBoxMovable: true,
+                        cropBoxResizable: true,
+                        toggleDragModeOnDblclick: false,
+                        background: false // Clean look
+                    });
+                }
+                reader.readAsDataURL(e.target.files[0]);
+            }
+            // Reset value so same file can be selected again if cancelled
+            e.target.value = '';
+        });
+
+        // Rotation
+        document.getElementById('btn-rotate-left').onclick = () => window.cropper && window.cropper.rotate(-90);
+        document.getElementById('btn-rotate-right').onclick = () => window.cropper && window.cropper.rotate(90);
+
+        // Confirm Crop
+        document.getElementById('btn-confirm-crop').onclick = () => {
+            if (window.cropper) {
+                window.cropper.getCroppedCanvas({ width: 512, height: 512 }).toBlob((blob) => {
+                    // Store blob globally for save
+                    window.currentAvatarBlob = blob;
+
+                    // Update Preview
+                    const url = URL.createObjectURL(blob);
+                    const img = document.getElementById('edit-avatar-img');
+                    const initial = document.getElementById('edit-avatar-initial');
+                    img.src = url;
+                    img.style.display = 'block';
+                    initial.style.display = 'none';
+
+                    // Close Modal
+                    closeCropModal();
+                }, 'image/jpeg', 0.9);
+            }
+        };
+
+        // Expose close helper
+        window.closeCropModal = () => {
+            document.getElementById('crop-modal').classList.add('hidden');
+            if (window.cropper) {
+                window.cropper.destroy();
+                window.cropper = null;
+            }
+        };
     }
 
     function toggleEditSections(dobVal) {
@@ -1270,11 +1449,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initialize Edit Interactions once if on settings page
-    if (window.location.pathname.endsWith('settings.html')) {
-        setupEditInteractions();
-        loadProfilesForManagement(); // Explicit load here for settings page
-    }
+
 
     async function loadProfilesForManagement() {
         const listEl = document.getElementById('profiles-list');
@@ -1292,7 +1467,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="bento-row-card">
                     <div style="display:flex; align-items:center; gap:20px;">
                          <div class="avatar-circle-large" style="width:56px; height:56px; font-size:1.4rem; ${p.gender === 'female' ? 'border-color:rgba(244,114,182,0.4)' : ''}">
-                            ${p.nickname[0].toUpperCase()}
+                            ${p.avatar_path
+                    ? `<img src="${p.avatar_path}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+                    : p.nickname[0].toUpperCase()
+                }
                         </div>
                         <div>
                             <div style="font-weight:700; font-size:1.2rem; margin-bottom:4px;">${p.nickname}</div>
@@ -1327,6 +1505,23 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('edit-name-display').textContent = p.nickname;
         document.getElementById('edit-nickname').value = p.nickname;
         document.getElementById('edit-dob').value = p.dob;
+
+        // Avatar Reset/Load
+        const img = document.getElementById('edit-avatar-img');
+        const initial = document.getElementById('edit-avatar-initial');
+        document.getElementById('edit-avatar-upload').value = ''; // Reset input
+        window.currentAvatarBlob = null; // Clear any pending crop
+
+        if (p.avatar_path) {
+            img.src = p.avatar_path;
+            img.style.display = 'block';
+            initial.style.display = 'none';
+        } else {
+            img.src = '';
+            img.style.display = 'none';
+            initial.style.display = 'block';
+            initial.textContent = p.nickname[0].toUpperCase();
+        }
 
         // Gender
         document.querySelectorAll('#edit-gender-control .segment-option').forEach(el => {

@@ -76,6 +76,7 @@ function initializeDatabase() {
         baby_stage TEXT,
         adult_health TEXT,
         adult_meds TEXT,
+        avatar_path TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, () => {
         // Migration: Add user_id if missing
@@ -83,6 +84,8 @@ function initializeDatabase() {
             // Link orphan personas to Admin (ID 1)
             db.run("UPDATE personas SET user_id = 1 WHERE user_id IS NULL");
         });
+        // Migration: Add avatar_path if missing
+        addColumnIfNotExists('personas', 'avatar_path', 'TEXT');
     });
 
     // 4. Records Table
@@ -244,51 +247,33 @@ app.get('/api/personas', authenticateToken, (req, res) => {
     });
 });
 
-// Create Persona
-app.post('/api/personas', authenticateToken, (req, res) => {
-    const { nickname, dob, gender, baby_feeding, baby_stage, adult_health, adult_meds } = req.body;
-
-    if (!nickname || !dob) {
-        return res.status(400).json({ error: 'Nickname and Date of Birth are required' });
-    }
-
-    const sql = `INSERT INTO personas (user_id, nickname, dob, gender, baby_feeding, baby_stage, adult_health, adult_meds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-    const params = [
-        req.user.id, // Authenticated User ID
-        nickname,
-        dob,
-        gender || 'unknown',
-        baby_feeding || null,
-        baby_stage || null,
-        JSON.stringify(adult_health || []),
-        JSON.stringify(adult_meds || [])
-    ];
-
-    db.run(sql, params, function (err) {
-        if (err) return res.status(400).json({ error: err.message });
-
-        res.json({
-            message: 'Persona created',
-            data: { id: this.lastID, ...req.body }
-        });
-    });
+// Multer for Avatar
+const uploadAvatar = multer({
+    dest: 'uploads/',
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-// Update Persona
-app.put('/api/personas/:id', authenticateToken, (req, res) => {
+// 2. Create Persona
+app.post('/api/personas', authenticateToken, uploadAvatar.single('avatar'), (req, res) => {
     const { nickname, dob, gender, baby_feeding, baby_stage, adult_health, adult_meds } = req.body;
-    const personaId = req.params.id;
+    let avatarPath = null;
 
     if (!nickname || !dob) {
+        // If file was uploaded, delete it since persona creation failed
+        if (req.file) {
+            fs.unlink(req.file.path, (err) => {
+                if (err) console.error("Error deleting uploaded file:", err);
+            });
+        }
         return res.status(400).json({ error: 'Nickname and Date of Birth are required' });
     }
 
-    // Verify Ownership first
-    db.get("SELECT id FROM personas WHERE id = ? AND user_id = ?", [personaId, req.user.id], (err, row) => {
-        if (err || !row) return res.status(403).json({ error: "Access denied or persona not found" });
+    const finalizeCreation = (finalAvatarPath) => {
+        const sql = `INSERT INTO personas (user_id, nickname, dob, gender, baby_feeding, baby_stage, adult_health, adult_meds, avatar_path) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-        const sql = `UPDATE personas SET nickname = ?, dob = ?, gender = ?, baby_feeding = ?, baby_stage = ?, adult_health = ?, adult_meds = ? WHERE id = ?`;
-        const params = [
+        db.run(sql, [
+            req.user.id,
             nickname,
             dob,
             gender || 'unknown',
@@ -296,15 +281,118 @@ app.put('/api/personas/:id', authenticateToken, (req, res) => {
             baby_stage || null,
             JSON.stringify(adult_health || []),
             JSON.stringify(adult_meds || []),
-            personaId
-        ];
-
-        db.run(sql, params, function (err) {
-            if (err) return res.status(400).json({ error: err.message });
-            res.json({ message: 'Persona updated successfully' });
+            finalAvatarPath
+        ], function (err) {
+            if (err) {
+                // If DB error, and avatar was uploaded, delete it
+                if (finalAvatarPath) {
+                    fs.unlink(path.resolve(__dirname, finalAvatarPath), (unlinkErr) => {
+                        if (unlinkErr) console.error("Error deleting avatar on DB error:", unlinkErr);
+                    });
+                }
+                return res.status(400).json({ error: err.message });
+            }
+            res.json({ message: 'Persona created', id: this.lastID, avatar_path: finalAvatarPath });
         });
+    };
+
+    if (req.file) {
+        const fullPath = path.resolve(__dirname, req.file.path);
+        const desiredPath = fullPath + '.jpg';
+        const relativePath = 'uploads/' + path.basename(desiredPath);
+
+        sharp(fullPath)
+            .resize(256, 256, { fit: 'cover' })
+            .jpeg({ quality: 80 })
+            .toFile(desiredPath)
+            .then(() => {
+                fs.unlink(fullPath, () => { }); // Clean temp
+                finalizeCreation(relativePath);
+            })
+            .catch(err => {
+                console.error("Avatar compression failed", err);
+                res.status(500).json({ error: "Avatar processing failed" });
+            });
+    } else {
+        finalizeCreation(null);
+    }
+});
+
+// 2.1 Update Persona (PUT)
+app.put('/api/personas/:id', authenticateToken, uploadAvatar.single('avatar'), (req, res) => {
+    const id = req.params.id;
+    const { nickname, dob, gender, baby_feeding, baby_stage, adult_health, adult_meds } = req.body;
+
+    db.get('SELECT * FROM personas WHERE id = ? AND user_id = ?', [id, req.user.id], (err, row) => {
+        if (err || !row) {
+            // If file was uploaded, delete it since persona not found or access denied
+            if (req.file) {
+                fs.unlink(req.file.path, (unlinkErr) => {
+                    if (unlinkErr) console.error("Error deleting uploaded file:", unlinkErr);
+                });
+            }
+            return res.status(403).json({ error: "Access denied or not found" });
+        }
+
+        const finalizeUpdate = (finalAvatarPath) => {
+            const sql = `UPDATE personas SET nickname = ?, dob = ?, gender = ?, baby_feeding = ?, baby_stage = ?, 
+                         adult_health = ?, adult_meds = ?, avatar_path = ? WHERE id = ?`;
+
+            db.run(sql, [
+                nickname || row.nickname,
+                dob || row.dob,
+                gender || row.gender,
+                baby_feeding || row.baby_feeding,
+                baby_stage || row.baby_stage,
+                JSON.stringify(adult_health || JSON.parse(row.adult_health || '[]')),
+                JSON.stringify(adult_meds || JSON.parse(row.adult_meds || '[]')),
+                finalAvatarPath,
+                id
+            ], (err) => {
+                if (err) {
+                    // If DB error, and new avatar was uploaded, delete it
+                    if (req.file && finalAvatarPath) {
+                        fs.unlink(path.resolve(__dirname, finalAvatarPath), (unlinkErr) => {
+                            if (unlinkErr) console.error("Error deleting new avatar on DB error:", unlinkErr);
+                        });
+                    }
+                    return res.status(400).json({ error: err.message });
+                }
+                res.json({ message: 'Persona updated', avatar_path: finalAvatarPath });
+            });
+        };
+
+        if (req.file) {
+            // Delete old avatar if it exists
+            if (row.avatar_path) {
+                const oldAvatarFullPath = path.resolve(__dirname, row.avatar_path);
+                fs.unlink(oldAvatarFullPath, (unlinkErr) => {
+                    if (unlinkErr) console.warn("Could not delete old avatar:", unlinkErr);
+                });
+            }
+
+            const fullPath = path.resolve(__dirname, req.file.path);
+            const desiredPath = fullPath + '.jpg';
+            const relativePath = 'uploads/' + path.basename(desiredPath);
+
+            sharp(fullPath)
+                .resize(256, 256, { fit: 'cover' })
+                .jpeg({ quality: 80 })
+                .toFile(desiredPath)
+                .then(() => {
+                    fs.unlink(fullPath, () => { });
+                    finalizeUpdate(relativePath);
+                })
+                .catch(e => {
+                    console.error("Avatar error", e);
+                    res.status(500).json({ error: "Avatar processing failed" });
+                });
+        } else {
+            finalizeUpdate(row.avatar_path);
+        }
     });
 });
+
 
 // Delete Persona (Cascade)
 app.delete('/api/personas/:id', authenticateToken, (req, res) => {
