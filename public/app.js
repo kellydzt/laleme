@@ -1004,6 +1004,17 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('persona_id', personaId);
         formData.append('lang', appLang);
 
+        // Send Local Device Time
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hour = String(now.getHours()).padStart(2, '0');
+        const minute = String(now.getMinutes()).padStart(2, '0');
+        const second = String(now.getSeconds()).padStart(2, '0');
+        const localTimestamp = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+        formData.append('local_timestamp', localTimestamp);
+
         // 2. Start Upload (Async)
         uploadTask = (async () => {
             try {

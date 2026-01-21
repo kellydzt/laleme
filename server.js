@@ -429,15 +429,21 @@ function verifyPersonaOwnership(userId, personaId, callback) {
 app.post('/api/records', authenticateToken, upload.single('photo'), (req, res) => {
     // Initial creation only needs image and basics
     const image_path = req.file ? req.file.path : null;
-    const { stool_type, color, note, persona_id } = req.body; // Added persona_id
+    const { stool_type, color, note, persona_id, local_timestamp } = req.body; // Added local_timestamp
 
     if (!image_path) {
         return res.status(400).json({ error: 'No image uploaded' });
     }
 
-    const sql = `INSERT INTO records (stool_type, color, note, image_path, persona_id) VALUES (?, ?, ?, ?, ?)`;
-    // Defaults for initial load
-    const params = [stool_type || 4, color || 'unknown', note || '', image_path, persona_id || null];
+    // Use local_timestamp if provided, else let DB default
+    let sql, params;
+    if (local_timestamp) {
+        sql = `INSERT INTO records (stool_type, color, note, image_path, persona_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`;
+        params = [stool_type || 4, color || 'unknown', note || '', image_path, persona_id || null, local_timestamp];
+    } else {
+        sql = `INSERT INTO records (stool_type, color, note, image_path, persona_id) VALUES (?, ?, ?, ?, ?)`;
+        params = [stool_type || 4, color || 'unknown', note || '', image_path, persona_id || null];
+    }
 
     // COMPRESSION LOGIC
     if (image_path) {
