@@ -60,6 +60,8 @@ function initializeDatabase() {
     // Migration: Add Verification Columns
     addColumnIfNotExists('users', 'is_verified', 'BOOLEAN DEFAULT 0');
     addColumnIfNotExists('users', 'verification_token', 'TEXT');
+    // Migration: Add Invite Code ID tracking
+    addColumnIfNotExists('users', 'invite_code_id', 'INTEGER');
 }
 
 // 2. Invites Table
@@ -194,40 +196,55 @@ const upload = multer({ storage: storage });
 app.post('/api/auth/register', async (req, res) => {
     const { email, password, inviteCode } = req.body;
 
-    // Check Invite
+    // 1. Check Invite Code (Must be valid and unused)
     db.get("SELECT * FROM invites WHERE code = ? AND is_used = 0", [inviteCode], async (err, invite) => {
         if (err) return res.status(500).json({ error: "DB Error" });
         if (!invite) return res.status(400).json({ error: "Invalid or expired invite code" });
 
-        // Hash Password
         const passwordHash = await bcrypt.hash(password, 10);
         const verificationToken = uuidv4();
+        const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${verificationToken}`;
 
-        // Create User
-        db.run("INSERT INTO users (email, password_hash, is_verified, verification_token) VALUES (?, ?, 0, ?)",
-            [email, passwordHash, verificationToken], function (err) {
-                if (err) return res.status(400).json({ error: "Email already exists" });
+        // 2. Check if user exists
+        db.get("SELECT * FROM users WHERE email = ?", [email], (err, existingUser) => {
+            if (err) return res.status(500).json({ error: "DB Error" });
 
-                const userId = this.lastID;
-
-                // Mark Invite Used
-                db.run("UPDATE invites SET is_used = 1, used_by = ? WHERE id = ?", [userId, invite.id]);
-
-                // Send Verification Email
-                const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${verificationToken}`;
+            const sendVerificationEmail = () => {
                 resend.emails.send({
-                    from: 'onboarding@send.laleme.04010123.xyz', // Use default or verified domain
+                    from: 'onboarding@send.laleme.04010123.xyz',
                     to: email,
                     subject: 'Verify your Laleme Account',
                     html: `<p>Welcome to Laleme! <a href="${verifyUrl}">Click here to verify your email</a></p>`
                 }).then(() => {
-                    res.json({ message: "Registration successful. Please check your email to verify." });
+                    res.json({ message: "Verification email sent. Please check your inbox." });
                 }).catch(e => {
                     console.error("Email failed", e);
-                    // Return success anyway, user can ask for resend logic later (out of scope for now)
-                    res.json({ message: "Account created but email failed. Contact admin." });
+                    res.json({ message: "Account setup, but email failed. Contact admin." });
                 });
-            });
+            };
+
+            if (existingUser) {
+                // Scenario A: User exists but NOT verified -> Resend / Update
+                if (existingUser.is_verified === 0) {
+                    db.run("UPDATE users SET password_hash = ?, verification_token = ?, invite_code_id = ? WHERE id = ?",
+                        [passwordHash, verificationToken, invite.id, existingUser.id],
+                        (err) => {
+                            if (err) return res.status(500).json({ error: "Update failed" });
+                            sendVerificationEmail();
+                        });
+                } else {
+                    // Scenario B: User exists and Verified -> Error
+                    return res.status(400).json({ error: "Email already registered" });
+                }
+            } else {
+                // Scenario C: New User -> Create
+                db.run("INSERT INTO users (email, password_hash, is_verified, verification_token, invite_code_id) VALUES (?, ?, 0, ?, ?)",
+                    [email, passwordHash, verificationToken, invite.id], function (err) {
+                        if (err) return res.status(400).json({ error: "Registration failed" });
+                        sendVerificationEmail();
+                    });
+            }
+        });
     });
 });
 
@@ -236,11 +253,32 @@ app.get('/api/auth/verify', (req, res) => {
     if (!token) return res.status(400).send("Missing token");
 
     db.get("SELECT * FROM users WHERE verification_token = ?", [token], (err, user) => {
-        if (err || !user) return res.status(400).send("Invalid token");
+        if (err || !user) return res.status(400).send("Invalid or expired token");
 
-        db.run("UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?", [user.id], (err) => {
-            if (err) return res.status(500).send("DB Error");
-            res.redirect('/login.html?verified=true');
+        // Check if the invite code is STILL valid (race condition check)
+        // If user has no invite_code_id (old users), skip this check
+        const checkInvite = (cb) => {
+            if (!user.invite_code_id) return cb(true);
+            db.get("SELECT is_used FROM invites WHERE id = ?", [user.invite_code_id], (err, row) => {
+                if (err || !row || row.is_used === 1) return cb(false);
+                cb(true);
+            });
+        };
+
+        checkInvite((isValid) => {
+            if (!isValid) return res.status(400).send("Sorry, the invite code associated with this account has already been claimed.");
+
+            // 1. Mark User Verified
+            db.run("UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?", [user.id], (err) => {
+                if (err) return res.status(500).send("DB Error during verification");
+
+                // 2. Mark Invite Used (if applicable)
+                if (user.invite_code_id) {
+                    db.run("UPDATE invites SET is_used = 1, used_by = ? WHERE id = ?", [user.id, user.invite_code_id]);
+                }
+
+                res.redirect('/login.html?verified=true');
+            });
         });
     });
 });
