@@ -115,6 +115,7 @@ async function analyzeImage(imagePath, context = null, lang = 'en') {
            "bristol": { "scale": number (1-7), "description": string (中文描述) },
            "color": { "primary": string (颜色名称 中文), "medical_disclaimer": string (可选, 中文医疗解释), "warning_level": "none"|"warning"|"danger" },
            "texture": { "has_mucus": boolean, "has_blood": boolean, "undigested_food": string[] (中文食物名), "is_greasy": boolean },
+           "volume": { "estimation": "string (少量/中等/大量)", "description": "string (简短描述, 比如'像高尔夫球大小')" },
            "summary": string (2-3句中文医疗建议，结合背景: ${JSON.stringify(context)})
         }
         
@@ -141,6 +142,7 @@ async function analyzeImage(imagePath, context = null, lang = 'en') {
                "bristol": { "scale": number (1-7), "description": string },
                "color": { "primary": string, "medical_disclaimer": string (optional), "warning_level": "none"|"warning"|"danger" },
                "texture": { "has_mucus": boolean, "has_blood": boolean, "undigested_food": string[], "is_greasy": boolean },
+               "volume": { "estimation": "string (Small/Medium/Large)", "description": "string (Short description)" },
                "summary": string (2-3 sentences medical advice tailored to context: ${JSON.stringify(context)})
             }
             

@@ -12,6 +12,21 @@ document.addEventListener('DOMContentLoaded', () => {
         'Authorization': `Bearer ${token}`
     };
 
+    function parseJwt(token) {
+        try {
+            var base64Url = token.split('.')[1];
+            var base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            var jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        } catch (e) {
+            return {};
+        }
+    }
+
+    const currentUser = parseJwt(token);
+
     // Admin Check
     if (userRole === 'admin') {
         const adminLink = document.getElementById('admin-link');
@@ -123,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
             user_record_title: 'USER RECORD',
             bristol_scale_title: 'BRISTOL SCALE',
             color_analysis_title: 'COLOR ANALYSIS',
+            volume_analysis_title: 'VOLUME ESTIMATION',
             micro_features_title: 'MICRO-FEATURES',
             analysis_pending_title: 'Analysis Pending',
             analysis_pending_msg: 'Waiting for Dr. AI...<br>This creates a complex medical analysis.',
@@ -269,6 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
             user_record_title: '用户记录',
             bristol_scale_title: '布里斯托分类',
             color_analysis_title: '颜色分析',
+            volume_analysis_title: '份量估计',
             micro_features_title: '微观特征',
             analysis_pending_title: '分析进行中',
             analysis_pending_msg: '正在等待 AI 医生...<br>这可能需要一点时间。',
@@ -883,6 +900,21 @@ document.addEventListener('DOMContentLoaded', () => {
                                 ${data.color?.medical_disclaimer || 'No specific medical notes for this color.'}
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Volume Analysis -->
+                    <div class="report-section">
+                        <div class="section-title"><i class="ph-fill ph-scales"></i> ${tr('volume_analysis_title') || 'Volume Estimation'}</div>
+                        <div style="background:rgba(255,255,255,0.05); border-radius:12px; padding:15px; display:flex; align-items:center; gap:15px;">
+                            <div style="width:40px; height:40px; background:rgba(255,255,255,0.1); border-radius:50%; display:flex; align-items:center; justify-content:center;">
+                                <i class="ph-duotone ph-cube" style="font-size:1.2rem; color:var(--accent-lime);"></i>
+                            </div>
+                            <div>
+                                <div style="font-weight:600; color:white; font-size:1rem;">${data.volume?.estimation || 'Unknown'}</div>
+                                <div style="color:var(--text-muted); font-size:0.85rem; margin-top:2px;">${data.volume?.description || 'No volume data extracted.'}</div>
+                            </div>
+                        </div>
+                    </div>
                     </div>
 
                     <div class="report-section">
@@ -1740,6 +1772,14 @@ document.addEventListener('DOMContentLoaded', () => {
         btnShowForgotPass.addEventListener('click', () => {
             changePassForm.classList.add('hidden');
             settingsForgotForm.classList.remove('hidden');
+
+            // Auto-fill email
+            if (currentUser && currentUser.email) {
+                const emailInput = document.getElementById('settings-forgot-email');
+                emailInput.value = currentUser.email;
+                emailInput.readOnly = true; // Prevent editing since we know who they are
+                emailInput.style.opacity = '0.7';
+            }
         });
 
         btnBackToChange.addEventListener('click', () => {
