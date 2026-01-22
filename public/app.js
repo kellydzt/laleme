@@ -142,6 +142,9 @@ document.addEventListener('DOMContentLoaded', () => {
             micro_features_title: 'MICRO-FEATURES',
             analysis_pending_title: 'Analysis Pending',
             analysis_pending_msg: 'Waiting for Dr. AI...<br>This creates a complex medical analysis.',
+            analysis_failed_title: 'Analysis Failed',
+            analysis_failed_msg: 'Dr. AI is currently unavailable or timed out.',
+            btn_retry: 'Retry Analysis',
             btn_check_again: 'Check Again',
             btn_checking: 'Checking...',
             btn_delete_record: 'Delete this record',
@@ -289,6 +292,9 @@ document.addEventListener('DOMContentLoaded', () => {
             micro_features_title: '微观特征',
             analysis_pending_title: '分析进行中',
             analysis_pending_msg: '正在等待 AI 医生...<br>这可能需要一点时间。',
+            analysis_failed_title: '分析失败',
+            analysis_failed_msg: 'AI 服务暂时不可用或请求超时。',
+            btn_retry: '重试',
             btn_check_again: '再次检查',
             btn_checking: '检查中...',
             btn_delete_record: '删除此记录',
@@ -568,6 +574,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify({ image_path: imagePath, context: context, lang: appLang })
             });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Analysis failed: ${res.status}`);
+            }
             return await res.json(); // Return promise
         } catch (err) {
             console.error("Background analysis failed", err);
@@ -575,13 +585,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function checkAndShowAnalysis(imagePath) {
+    async function checkAndShowAnalysis(imagePath, analysisError = null) {
         try {
             const res = await fetch('/api/records?persona_id=' + (currentPersona ? currentPersona.id : ''), { headers: authHeaders });
             const json = await res.json();
             const record = json.data.find(r => r.image_path === imagePath);
             if (record && record.ai_analysis) showAnalysis(record); // Pass full record
-            else showAnalysis({ ...record, ai_analysis: null }); // Pass pseudo record so pending works
+            else showAnalysis({ ...record, ai_analysis: null }, analysisError); // Pass error if exists
         } catch (err) { console.error(err); }
     }
 
@@ -703,7 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function showAnalysis(record) {
+    function showAnalysis(record, analysisError = null) {
         recordToDeleteOnClose = null; // Reset
         let data = null;
         let isPending = false;
@@ -714,9 +724,29 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             try {
                 data = typeof analysisStr === 'string' ? JSON.parse(analysisStr) : (analysisStr || {});
+
+                // CHECK FOR LEGACY ERROR DATA
+                if (data.summary && data.summary.startsWith && data.summary.startsWith("AI Service Error")) {
+                    analysisError = { message: data.summary };
+                    isPending = false;
+                    // Prevent rendering as normal report
+                    data = null;
+                }
             } catch (e) {
                 console.error(e);
                 isPending = true;
+            }
+        }
+
+        // CHECK TIMEOUT FOR PENDING
+        if (isPending && !analysisError) {
+            const createdTime = new Date(record.created_at).getTime();
+            const now = Date.now();
+            // If older than 2 minutes and still pending, treat as timeout/failure
+            // (Assuming server would have updated it by now if it was working)
+            if ((now - createdTime) > 2 * 60 * 1000) {
+                analysisError = { message: tr('analysis_failed_msg') };
+                isPending = false;
             }
         }
 
@@ -734,7 +764,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        renderMedicalReport(data, record, isPending);
+        renderMedicalReport(data, record, isPending, analysisError);
         if (analysisOverlay) {
             analysisOverlay.classList.remove('hidden');
             // Force scroll reset after visible
@@ -768,32 +798,45 @@ document.addEventListener('DOMContentLoaded', () => {
         // No delete button binding needed
     }
 
-    function renderMedicalReport(data, record, isPending) {
+    function renderMedicalReport(data, record, isPending, analysisError = null) {
         let html = '';
 
-        if (isPending) {
+        // Toggle Done Button (Hide on Error/Pending, Show on Success)
+        if (closeBtn) {
+            closeBtn.style.display = (isPending || analysisError) ? 'none' : 'block';
+        }
+
+        if (isPending || analysisError) {
+            const isError = !!analysisError;
+            const title = isError ? tr('analysis_failed_title') : tr('analysis_pending_title');
+            const msg = isError ? (analysisError.message || tr('analysis_failed_msg')) : tr('analysis_pending_msg');
+            const icon = isError ? `<i class="ph-fill ph-warning-octagon" style="font-size:3.5rem; color:#ef4444; margin-bottom:20px;"></i>` : `<div class="spinner" style="margin:0 auto 20px auto;"></div>`;
+            const retryBtnText = isError ? tr('btn_retry') : tr('btn_check_again');
+
             html = `
-                <div class="report-container" style="text-align:center; padding-top:40px;">
+                <div class="report-container" style="text-align:center; padding-top:40px; height:100%; display:flex; flex-direction:column;">
                      <!-- Blurred Image (Still show if exists) -->
                     ${record.image_path ? `
-                    <div class="modal-image-container" style="margin-bottom:30px;">
+                    <div class="modal-image-container" style="margin-bottom:30px; flex-shrink:0;">
                         <img src="${record.image_path}" class="detail-img blurred" id="detail-img-preview">
                     </div>
                     ` : ''}
                     
-                    <div class="spinner" style="margin:0 auto 20px auto;"></div>
-                    <h3 style="color:white; margin-bottom:10px;">${tr('analysis_pending_title')}</h3>
-                    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:30px;">
-                        ${tr('analysis_pending_msg')}
-                    </p>
+                    <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                        ${icon}
+                        <h3 style="color:white; margin-bottom:12px; font-size:1.5rem;">${title}</h3>
+                        <p style="color:var(--text-muted); font-size:0.95rem; margin-bottom:40px; line-height:1.5; padding:0 20px;">
+                            ${msg}
+                        </p>
+                    </div>
 
-                    <button id="btn-retry-analysis" class="primary-btn" style="width:auto; padding:0 30px; margin-bottom:20px;">
-                        <i class="ph-bold ph-arrows-clockwise"></i> ${tr('btn_check_again')}
-                    </button>
-                    
-                    <div style="margin-top:20px;">
-                        <button id="btn-delete-record" style="background:transparent; border:none; color:#ef4444; opacity:0.6; cursor:pointer; text-decoration:underline;">
-                            ${tr('btn_delete_record')}
+                    <div style="margin-top:auto; display:flex; gap:15px; width:100%;">
+                        <button id="btn-delete-record" style="flex:1; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#ef4444; padding:12px; border-radius:14px; font-size:1rem; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                            <i class="ph-fill ph-trash"></i> ${tr('btn_delete_record')}
+                        </button>
+                        
+                        <button id="btn-retry-analysis" class="primary-btn" style="flex:1; width:auto; margin:0; display:flex; align-items:center; justify-content:center; gap:8px;">
+                            <i class="ph-bold ph-arrows-clockwise"></i> ${retryBtnText}
                         </button>
                     </div>
                 </div>
@@ -950,11 +993,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const retryBtn = document.getElementById('btn-retry-analysis');
             if (retryBtn) retryBtn.onclick = async () => {
                 retryBtn.textContent = 'Checking...';
+
+                // If this was an error state, re-trigger the analysis first
+                if (analysisError) {
+                    try {
+                        await triggerAnalysisInBackground(record.image_path);
+                    } catch (e) {
+                        console.error("Retry failed:", e);
+                        // Re-render error state
+                        renderMedicalReport(null, record, false, e);
+                        return;
+                    }
+                }
+
                 await fetchRecords();
                 const res = await fetch(`/api/records?persona_id=${currentPersona.id}`, { headers: authHeaders });
                 const json = await res.json();
                 const freshRecord = json.data.find(r => r.id === record.id);
-                showAnalysis(freshRecord);
+                // Can pass error manually if still null, but usually if trigger succeeded, it might work now
+                if (freshRecord.ai_analysis) showAnalysis(freshRecord);
+                else {
+                    // Still pending?
+                    showAnalysis(freshRecord);
+                }
             };
 
             const delBtn = document.getElementById('btn-delete-record');
@@ -1299,6 +1360,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (res.status === 401) return logout();
 
+            let analysisError = null;
             // WAIT for Analysis to finish (if pending)
             if (pendingAnalysisPromise) {
                 try {
@@ -1306,6 +1368,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     pendingAnalysisPromise = null;
                 } catch (e) {
                     console.error("Analysis failed during wait:", e);
+                    analysisError = e;
+                    // Do NOT throw here, we want to save details even if AI failed
                 }
             }
 
@@ -1315,7 +1379,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Hide Spinner
             loadingOverlay.classList.remove('visible');
 
-            checkAndShowAnalysis(currentRecordPath);
+            checkAndShowAnalysis(currentRecordPath, analysisError);
         } catch (err) {
             console.error(err);
             loadingOverlay.classList.remove('visible');

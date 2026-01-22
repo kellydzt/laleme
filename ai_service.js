@@ -166,14 +166,7 @@ async function analyzeImage(imagePath, context = null, lang = 'en') {
     return text;
   } catch (error) {
     console.error("AI Analysis Error:", error);
-    return JSON.stringify({
-      validity: { is_stool: true, privacy_issue: false },
-      bristol: { scale: 0, description: "Analysis Failed" },
-      summary: "AI Service Error: " + error.message,
-      color: { primary: "unknown", warning_level: "none" },
-      texture: { has_mucus: false, has_blood: false, undigested_food: [], is_greasy: false },
-      volume: { estimation: "unknown", float_status: "unknown" }
-    });
+    throw error; // Propagate error to server.js
   }
 }
 
