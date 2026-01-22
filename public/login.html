@@ -197,7 +197,7 @@
                 const data = await res.json();
 
                 if (res.ok) {
-                    alert("Account created! Please sign in.");
+                    alert(data.message); // Show message from server (Check email)
                     showLogin.click();
                 } else {
                     alert(data.error);
@@ -208,6 +208,14 @@
             btn.textContent = 'Create Account';
             btn.disabled = false;
         });
+
+        // Check for verification success
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('verified') === 'true') {
+            alert("Email verified successfully! You can now sign in.");
+            // Optional: Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
     </script>
 </body>
 

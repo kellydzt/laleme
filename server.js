@@ -7,11 +7,14 @@ const fs = require('fs');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const sharp = require('sharp');
+const { Resend } = require('resend');
+const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_laleme_key'; // In prod, use .env
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Middleware
 app.use(cors());
@@ -54,9 +57,13 @@ function initializeDatabase() {
             }
         });
     });
+    // Migration: Add Verification Columns
+    addColumnIfNotExists('users', 'is_verified', 'BOOLEAN DEFAULT 0');
+    addColumnIfNotExists('users', 'verification_token', 'TEXT');
+}
 
-    // 2. Invites Table
-    db.run(`CREATE TABLE IF NOT EXISTS invites (
+// 2. Invites Table
+db.run(`CREATE TABLE IF NOT EXISTS invites (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         code TEXT UNIQUE,
         created_by INTEGER,
@@ -65,8 +72,8 @@ function initializeDatabase() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
-    // 3. Personas Table (Updated)
-    db.run(`CREATE TABLE IF NOT EXISTS personas (
+// 3. Personas Table (Updated)
+db.run(`CREATE TABLE IF NOT EXISTS personas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER, -- FK to users
         nickname TEXT,
@@ -79,17 +86,17 @@ function initializeDatabase() {
         avatar_path TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, () => {
-        // Migration: Add user_id if missing
-        addColumnIfNotExists('personas', 'user_id', 'INTEGER', () => {
-            // Link orphan personas to Admin (ID 1)
-            db.run("UPDATE personas SET user_id = 1 WHERE user_id IS NULL");
-        });
-        // Migration: Add avatar_path if missing
-        addColumnIfNotExists('personas', 'avatar_path', 'TEXT');
+    // Migration: Add user_id if missing
+    addColumnIfNotExists('personas', 'user_id', 'INTEGER', () => {
+        // Link orphan personas to Admin (ID 1)
+        db.run("UPDATE personas SET user_id = 1 WHERE user_id IS NULL");
     });
+    // Migration: Add avatar_path if missing
+    addColumnIfNotExists('personas', 'avatar_path', 'TEXT');
+});
 
-    // 4. Records Table
-    db.run(`CREATE TABLE IF NOT EXISTS records (
+// 4. Records Table
+db.run(`CREATE TABLE IF NOT EXISTS records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         persona_id INTEGER,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -106,12 +113,12 @@ function initializeDatabase() {
         health_score TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`, () => {
-        // Migration: Add health_score if missing
-        addColumnIfNotExists('records', 'health_score', 'TEXT');
-    });
+    // Migration: Add health_score if missing
+    addColumnIfNotExists('records', 'health_score', 'TEXT');
+});
 
-    // 5. Trend Reports Table (Optimization Cache)
-    db.run(`CREATE TABLE IF NOT EXISTS trend_reports (
+// 5. Trend Reports Table (Optimization Cache)
+db.run(`CREATE TABLE IF NOT EXISTS trend_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         persona_id INTEGER,
         start_date TEXT,
@@ -121,8 +128,8 @@ function initializeDatabase() {
         FOREIGN KEY (persona_id) REFERENCES personas(id)
     )`);
 
-    // 6. Analytics Events Table
-    db.run(`CREATE TABLE IF NOT EXISTS analytics_events (
+// 6. Analytics Events Table
+db.run(`CREATE TABLE IF NOT EXISTS analytics_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         event_type TEXT, -- 'ai_complete', 'upload_error', 'conversion'
@@ -195,17 +202,46 @@ app.post('/api/auth/register', async (req, res) => {
 
         // Hash Password
         const passwordHash = await bcrypt.hash(password, 10);
+        const verificationToken = uuidv4();
 
         // Create User
-        db.run("INSERT INTO users (email, password_hash) VALUES (?, ?)", [email, passwordHash], function (err) {
-            if (err) return res.status(400).json({ error: "Email already exists" });
+        db.run("INSERT INTO users (email, password_hash, is_verified, verification_token) VALUES (?, ?, 0, ?)",
+            [email, passwordHash, verificationToken], function (err) {
+                if (err) return res.status(400).json({ error: "Email already exists" });
 
-            const userId = this.lastID;
+                const userId = this.lastID;
 
-            // Mark Invite Used
-            db.run("UPDATE invites SET is_used = 1, used_by = ? WHERE id = ?", [userId, invite.id]);
+                // Mark Invite Used
+                db.run("UPDATE invites SET is_used = 1, used_by = ? WHERE id = ?", [userId, invite.id]);
 
-            res.json({ message: "Registration successful" });
+                // Send Verification Email
+                const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${verificationToken}`;
+                resend.emails.send({
+                    from: 'onboarding@resend.dev', // Use default or verified domain
+                    to: email,
+                    subject: 'Verify your Laleme Account',
+                    html: `<p>Welcome to Laleme! <a href="${verifyUrl}">Click here to verify your email</a></p>`
+                }).then(() => {
+                    res.json({ message: "Registration successful. Please check your email to verify." });
+                }).catch(e => {
+                    console.error("Email failed", e);
+                    // Return success anyway, user can ask for resend logic later (out of scope for now)
+                    res.json({ message: "Account created but email failed. Contact admin." });
+                });
+            });
+    });
+});
+
+app.get('/api/auth/verify', (req, res) => {
+    const { token } = req.query;
+    if (!token) return res.status(400).send("Missing token");
+
+    db.get("SELECT * FROM users WHERE verification_token = ?", [token], (err, user) => {
+        if (err || !user) return res.status(400).send("Invalid token");
+
+        db.run("UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?", [user.id], (err) => {
+            if (err) return res.status(500).send("DB Error");
+            res.redirect('/login.html?verified=true');
         });
     });
 });
@@ -214,6 +250,16 @@ app.post('/api/auth/login', (req, res) => {
     const { email, password } = req.body;
     db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
         if (err || !user) return res.status(400).json({ error: "User not found" });
+
+        // Check Verification (Skip for admin if needed, but safer to enforce except manual overrides)
+        // Admin user created in init script has is_verified=1 (implied default via logic updates or manual fix)
+        // Actually, init script inserts (..., role) without is_verified.
+        // Wait, schema default is 0.
+        // I should insure ADMIN is verified.
+        // But for regular users:
+        if (user.is_verified === 0 && user.role !== 'admin') {
+            return res.status(403).json({ error: "Please verify your email first." });
+        }
 
         if (await bcrypt.compare(password, user.password_hash)) {
             const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET);
