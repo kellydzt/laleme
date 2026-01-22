@@ -101,7 +101,22 @@
             </div>
             <button type="submit" class="primary-btn">Sign In</button>
             <div class="toggle-auth">
+                <a id="show-forgot-password" style="font-size:0.9rem; cursor:pointer;">Forgot Password?</a>
+            </div>
+            <div class="toggle-auth">
                 New user? <a id="show-register">Have an invite?</a>
+            </div>
+        </form>
+
+        <!-- FORGOT PASSWORD FORM -->
+        <form id="forgot-form" class="hidden">
+            <div class="input-group">
+                <label>Enter your email</label>
+                <input type="email" id="forgot-email" class="text-input" style="width:100%" required>
+            </div>
+            <button type="submit" class="primary-btn">Send Reset Link</button>
+            <div class="toggle-auth">
+                <a id="back-to-login-from-forgot">Back to Sign In</a>
             </div>
         </form>
 
@@ -142,10 +157,54 @@
             subtitle.textContent = "Join with Invite Code";
         });
 
-        showLogin.addEventListener('click', () => {
+        const forgotForm = document.getElementById('forgot-form');
+        const showForgotPassword = document.getElementById('show-forgot-password');
+        const backToLoginFromForgot = document.getElementById('back-to-login-from-forgot');
+
+        showRegister.addEventListener('click', () => {
+            loginForm.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+            forgotForm.classList.add('hidden');
+            subtitle.textContent = "Join with Invite Code";
+        });
+
+        const switchToLogin = () => {
             registerForm.classList.add('hidden');
+            forgotForm.classList.add('hidden');
             loginForm.classList.remove('hidden');
             subtitle.textContent = "Welcome back";
+        };
+
+        showLogin.addEventListener('click', switchToLogin);
+        backToLoginFromForgot.addEventListener('click', switchToLogin);
+
+        showForgotPassword.addEventListener('click', () => {
+            loginForm.classList.add('hidden');
+            forgotForm.classList.remove('hidden');
+            subtitle.textContent = "Reset Password";
+        });
+
+        forgotForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('forgot-email').value;
+            const btn = forgotForm.querySelector('button');
+            btn.textContent = 'Sending...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                alert(data.message);
+                switchToLogin();
+            } catch (err) {
+                alert('Request failed');
+            }
+            btn.textContent = 'Send Reset Link';
+            btn.disabled = false;
         });
 
         loginForm.addEventListener('submit', async (e) => {

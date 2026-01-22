@@ -204,7 +204,19 @@ document.addEventListener('DOMContentLoaded', () => {
             tag_work: 'Work',
             tag_home: 'Home',
             tag_public: 'Public',
-            tag_travel: 'Travel'
+            tag_travel: 'Travel',
+            // Change Password
+            btn_change_password: 'Change Password',
+            change_password_title: 'Change Password',
+            lbl_old_password: 'Current Password',
+            lbl_new_password: 'New Password',
+            lbl_confirm_password: 'Confirm New Password',
+            btn_update_password: 'Update Password',
+            msg_password_updated: 'Password updated successfully',
+            btn_forgot_password: 'Forgot Password?',
+            forgot_pass_desc: 'Enter your email address to receive a password reset link.',
+            btn_send_link: 'Send Reset Link',
+            back: 'Back'
         },
         zh: {
             // Dashboard
@@ -339,7 +351,19 @@ document.addEventListener('DOMContentLoaded', () => {
             tag_home: '家里',
             tag_public: '公厕',
             tag_travel: '旅行中',
-            tag_hotel: '酒店'
+            tag_hotel: '酒店',
+            // Change Password
+            btn_change_password: '修改密码',
+            change_password_title: '修改密码',
+            lbl_old_password: '当前密码',
+            lbl_new_password: '新密码',
+            lbl_confirm_password: '确认新密码',
+            btn_update_password: '更新密码',
+            msg_password_updated: '密码修改成功',
+            btn_forgot_password: '忘记密码?',
+            forgot_pass_desc: '输入您的电子邮箱以接收密码重置链接。',
+            btn_send_link: '发送重置链接',
+            back: '返回'
         }
     };
 
@@ -1079,6 +1103,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 uploadTask = null; // Reset
             }
+
+
+
         })();
 
         photoInput.value = ''; // Reset
@@ -1651,5 +1678,104 @@ document.addEventListener('DOMContentLoaded', () => {
             else alert("Delete failed");
         } catch (e) { console.error(e); }
     };
+
+    // Change Password Logic
+    const btnSubmitPassword = document.getElementById('btn-submit-password');
+    if (btnSubmitPassword) {
+        btnSubmitPassword.addEventListener('click', async () => {
+            const oldPass = document.getElementById('old-password').value;
+            const newPass = document.getElementById('new-password').value;
+            const confirmPass = document.getElementById('confirm-password').value;
+            const errorEl = document.getElementById('password-error');
+
+            errorEl.style.display = 'none';
+
+            if (!oldPass || !newPass || !confirmPass) {
+                errorEl.textContent = 'All fields are required';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            if (newPass !== confirmPass) {
+                errorEl.textContent = 'New passwords do not match';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders },
+                    body: JSON.stringify({ oldPassword: oldPass, newPassword: newPass })
+                });
+
+                const json = await res.json();
+                if (res.ok) {
+                    alert(tr('msg_password_updated'));
+                    document.getElementById('change-password-overlay').classList.add('hidden');
+                    // Clear inputs
+                    document.getElementById('old-password').value = '';
+                    document.getElementById('new-password').value = '';
+                    document.getElementById('confirm-password').value = '';
+                } else {
+                    errorEl.textContent = json.error;
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                console.error(err);
+                errorEl.textContent = 'Request failed';
+                errorEl.style.display = 'block';
+            }
+        });
+    }
+
+    // Settings -> Forgot Password Logic
+    const btnShowForgotPass = document.getElementById('btn-show-forgot-pass');
+    const btnBackToChange = document.getElementById('btn-back-to-change');
+    const btnSendResetSettings = document.getElementById('btn-send-reset-settings');
+    const changePassForm = document.getElementById('change-pass-form');
+    const settingsForgotForm = document.getElementById('settings-forgot-form');
+
+    if (btnShowForgotPass && btnBackToChange && btnSendResetSettings) {
+        btnShowForgotPass.addEventListener('click', () => {
+            changePassForm.classList.add('hidden');
+            settingsForgotForm.classList.remove('hidden');
+        });
+
+        btnBackToChange.addEventListener('click', () => {
+            settingsForgotForm.classList.add('hidden');
+            changePassForm.classList.remove('hidden');
+        });
+
+        btnSendResetSettings.addEventListener('click', async () => {
+            const email = document.getElementById('settings-forgot-email').value;
+            const btn = btnSendResetSettings;
+            const originalText = btn.textContent;
+
+            if (!email) { alert("Please enter your email"); return; }
+
+            btn.textContent = 'Sending...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                alert(data.message);
+
+                // Return to main state
+                document.getElementById('change-password-overlay').classList.add('hidden');
+                settingsForgotForm.classList.add('hidden');
+                changePassForm.classList.remove('hidden');
+            } catch (err) {
+                alert('Request failed');
+            }
+            btn.textContent = originalText;
+            btn.disabled = false;
+        });
+    }
 
 }); // End DOMContentLoaded

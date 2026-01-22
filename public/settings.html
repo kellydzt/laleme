@@ -79,6 +79,16 @@
                 style="margin-bottom:12px; font-size:1rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;"
                 data-i18n="section_account">Account</h3>
 
+            <div class="bento-row-card" style="padding: 16px; cursor:pointer; margin-bottom: 12px;"
+                onclick="document.getElementById('change-password-overlay').classList.remove('hidden')">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <button class="icon-btn-glass" style="cursor:default;"><i class="ph-bold ph-lock-key"></i></button>
+                    <div>
+                        <div style="font-weight:600;" data-i18n="btn_change_password">Change Password</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="bento-row-card" style="padding: 16px; cursor:pointer;" onclick="logout()">
                 <div style="display:flex; align-items:center; gap:12px;">
                     <button class="icon-btn-glass danger"
@@ -251,6 +261,61 @@
             <button class="close-btn secondary-btn"
                 onclick="document.getElementById('edit-overlay').classList.add('hidden')"
                 data-i18n="cancel">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="change-password-overlay" class="overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <i class="ph-bold ph-lock-key"></i>
+                <h3 data-i18n="change_password_title">Change Password</h3>
+            </div>
+            <div class="modal-body" style="padding: 20px 0;">
+                <!-- Change Pass Form -->
+                <div id="change-pass-form">
+                    <div class="input-group">
+                        <label data-i18n="lbl_old_password">Current Password</label>
+                        <input type="password" id="old-password" class="text-input">
+                        <div style="text-align:right; margin-top:4px;">
+                            <a id="btn-show-forgot-pass"
+                                style="font-size:0.8rem; color:var(--accent-blue); cursor:pointer;"
+                                data-i18n="btn_forgot_password">Forgot Password?</a>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label data-i18n="lbl_new_password">New Password</label>
+                        <input type="password" id="new-password" class="text-input">
+                    </div>
+                    <div class="input-group">
+                        <label data-i18n="lbl_confirm_password">Confirm New Password</label>
+                        <input type="password" id="confirm-password" class="text-input">
+                    </div>
+                    <div id="password-error" style="color:#ef4444; font-size:0.9rem; margin-top:10px; display:none;">
+                    </div>
+
+                    <button id="btn-submit-password" class="primary-btn" data-i18n="btn_update_password"
+                        style="margin-top:20px;">Update Password</button>
+                </div>
+
+                <!-- Forgot Pass Form (Hidden) -->
+                <div id="settings-forgot-form" class="hidden">
+                    <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:15px;"
+                        data-i18n="forgot_pass_desc">Enter your email address to receive a password reset link.</p>
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" id="settings-forgot-email" class="text-input">
+                    </div>
+                    <button id="btn-send-reset-settings" class="primary-btn" style="margin-bottom:10px;"
+                        data-i18n="btn_send_link">Send Reset Link</button>
+                    <button id="btn-back-to-change" class="secondary-btn" data-i18n="back">Back</button>
+                </div>
+            </div>
+
+            <button class="close-btn secondary-btn"
+                onclick="document.getElementById('change-password-overlay').classList.add('hidden')"
+                data-i18n="cancel">Cancel</button>
+
         </div>
     </div>
 

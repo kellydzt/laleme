@@ -62,6 +62,11 @@ function initializeDatabase() {
     addColumnIfNotExists('users', 'verification_token', 'TEXT');
     // Migration: Add Invite Code ID tracking
     addColumnIfNotExists('users', 'invite_code_id', 'INTEGER');
+    // Migration: Add Security Columns (Rate Limit & Reset)
+    addColumnIfNotExists('users', 'failed_attempts', 'INTEGER DEFAULT 0');
+    addColumnIfNotExists('users', 'lockout_until', 'DATETIME');
+    addColumnIfNotExists('users', 'reset_token', 'TEXT');
+    addColumnIfNotExists('users', 'reset_token_expires', 'DATETIME');
 }
 
 // 2. Invites Table
@@ -288,22 +293,114 @@ app.post('/api/auth/login', (req, res) => {
     db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
         if (err || !user) return res.status(400).json({ error: "User not found" });
 
-        // Check Verification (Skip for admin if needed, but safer to enforce except manual overrides)
-        // Admin user created in init script has is_verified=1 (implied default via logic updates or manual fix)
-        // Actually, init script inserts (..., role) without is_verified.
-        // Wait, schema default is 0.
-        // I should insure ADMIN is verified.
-        // But for regular users:
-        if (user.is_verified === 0 && user.role !== 'admin') {
-            return res.status(403).json({ error: "Please verify your email first." });
+        // 1. Check Lockout
+        if (user.lockout_until && new Date(user.lockout_until) > new Date()) {
+            const waitMin = Math.ceil((new Date(user.lockout_until) - new Date()) / 60000);
+            return res.status(429).json({ error: `Account locked. Try again in ${waitMin} minutes.` });
         }
 
+        // 2. Verify
         if (await bcrypt.compare(password, user.password_hash)) {
+            // Success: Reset failures
+            db.run("UPDATE users SET failed_attempts = 0, lockout_until = NULL WHERE id = ?", [user.id]);
+
+            // Check Verification Check (Existing Logic)
+            if (user.is_verified === 0 && user.role !== 'admin') {
+                return res.status(403).json({ error: "Please verify your email first." });
+            }
+
             const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET);
             res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
         } else {
+            // Failure: Increment Attempts
+            const attempts = (user.failed_attempts || 0) + 1;
+            let lockoutSql = "";
+            const params = [attempts, user.id];
+
+            if (attempts >= 10) {
+                const lockoutTime = new Date(Date.now() + 15 * 60000).toISOString(); // 15 mins
+                lockoutSql = ", lockout_until = ?";
+                params.splice(1, 0, lockoutTime); // Insert lockout time before user.id
+            }
+
+            db.run(`UPDATE users SET failed_attempts = ?${lockoutSql} WHERE id = ?`, params);
+
             res.status(403).json({ error: "Invalid password" });
         }
+    });
+});
+
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) return res.status(400).json({ error: "Missing fields" });
+
+    db.get("SELECT * FROM users WHERE id = ?", [req.user.id], async (err, user) => {
+        if (err || !user) return res.status(404).json({ error: "User not found" });
+
+        // Verify Old Password
+        if (await bcrypt.compare(oldPassword, user.password_hash)) {
+            // Hash New Password
+            const newHash = await bcrypt.hash(newPassword, 10);
+            db.run("UPDATE users SET password_hash = ? WHERE id = ?", [newHash, req.user.id], (err) => {
+                if (err) return res.status(500).json({ error: "DB Error" });
+                res.json({ message: "Password updated successfully" });
+            });
+        } else {
+            res.status(403).json({ error: "Incorrect old password" });
+        }
+    });
+});
+
+app.post('/api/auth/forgot-password', (req, res) => {
+    const { email } = req.body;
+    db.get("SELECT * FROM users WHERE email = ?", [email], (err, user) => {
+        if (err) return res.status(500).json({ error: "DB Error" });
+        // Always return success to prevent user enumeration
+        if (!user) return res.json({ message: "If that email exists, we sent a link." });
+
+        const token = uuidv4();
+        const expires = new Date(Date.now() + 3600000).toISOString(); // 1 hour
+
+        db.run("UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?", [token, expires, user.id], (err) => {
+            if (err) return; // Fail silently logs
+
+            const resetUrl = `${req.protocol}://${req.get('host')}/reset-password.html?token=${token}`;
+            resend.emails.send({
+                from: 'onboarding@laleme.04010123.xyz',
+                to: email,
+                subject: 'Reset your Laleme Password',
+                html: `<p>Click here to reset your password: <a href="${resetUrl}">Reset Password</a></p><p>This link expires in 1 hour.</p>`
+            }).then(() => {
+                res.json({ message: "If that email exists, we sent a link." });
+            }).catch(e => {
+                console.error("Reset email failed", e);
+                res.json({ message: "Error sending email." });
+            });
+        });
+    });
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    db.get("SELECT * FROM users WHERE reset_token = ? AND reset_token_expires > datetime('now')", [token], async (err, user) => {
+        if (err || !user) return res.status(400).json({ error: "Invalid or expired token" });
+
+        const hash = await bcrypt.hash(newPassword, 10);
+
+        // Update password and clear reset/lockout fields
+        db.run(`UPDATE users SET 
+            password_hash = ?, 
+            reset_token = NULL, 
+            reset_token_expires = NULL, 
+            failed_attempts = 0, 
+            lockout_until = NULL 
+            WHERE id = ?`,
+            [hash, user.id],
+            (err) => {
+                if (err) return res.status(500).json({ error: "DB Error" });
+                res.json({ message: "Password reset successful. Please login." });
+            });
     });
 });
 
