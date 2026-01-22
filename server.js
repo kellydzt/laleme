@@ -435,7 +435,21 @@ app.post('/api/personas', authenticateToken, uploadAvatar.single('avatar'), (req
                 }
                 return res.status(400).json({ error: err.message });
             }
-            res.json({ message: 'Persona created', id: this.lastID, avatar_path: finalAvatarPath });
+
+            // Fetch the newly created persona to return full object
+            db.get("SELECT * FROM personas WHERE id = ?", [this.lastID], (err, row) => {
+                if (err || !row) {
+                    return res.json({ message: 'Persona created', id: this.lastID, avatar_path: finalAvatarPath }); // Fallback
+                }
+
+                const newPersona = {
+                    ...row,
+                    adult_health: row.adult_health ? JSON.parse(row.adult_health) : [],
+                    adult_meds: row.adult_meds ? JSON.parse(row.adult_meds) : []
+                };
+
+                res.json({ message: 'Persona created', data: newPersona });
+            });
         });
     };
 
