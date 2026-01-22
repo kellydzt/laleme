@@ -73,7 +73,10 @@ document.addEventListener('DOMContentLoaded', () => {
         sensation: 'complete',
         symptoms: [],
         triggers: [],
-        location_context: null
+        symptoms: [],
+        triggers: [],
+        location_context: null,
+        location_city: null // New State
     };
 
     let wizardData = {
@@ -235,7 +238,11 @@ document.addEventListener('DOMContentLoaded', () => {
             btn_forgot_password: 'Forgot Password?',
             forgot_pass_desc: 'Enter your email address to receive a password reset link.',
             btn_send_link: 'Send Reset Link',
-            back: 'Back'
+            back: 'Back',
+            lbl_location: 'Location',
+            btn_locate: 'Add Location',
+            loc_locating: 'Locating...',
+            loc_failed: 'Locate Failed (Tap to retry)'
         },
         zh: {
             // Dashboard
@@ -386,7 +393,11 @@ document.addEventListener('DOMContentLoaded', () => {
             btn_forgot_password: '忘记密码?',
             forgot_pass_desc: '输入您的电子邮箱以接收密码重置链接。',
             btn_send_link: '发送重置链接',
-            back: '返回'
+            back: '返回',
+            lbl_location: '位置',
+            btn_locate: '点击添加定位',
+            loc_locating: '正在定位...',
+            loc_failed: '定位失败 (点击重试)'
         }
     };
 
@@ -548,10 +559,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resetDashboard() {
-        dashboardData = { effort: null, sensation: 'complete', symptoms: [], triggers: [], location_context: null };
+        dashboardData = { effort: null, sensation: 'complete', symptoms: [], triggers: [], location_context: null, location_city: null };
         document.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
         const sensationToggle = document.getElementById('sensation-toggle');
         if (sensationToggle) sensationToggle.checked = false;
+
+        // Reset Location UI
+        const locText = document.getElementById('location-city-text');
+        if (locText) {
+            const perm = localStorage.getItem('geo_perm');
+            if (perm === 'granted') {
+                tryAutoLocate(); // Auto-start if previously granted
+            } else {
+                locText.innerHTML = `<i class="ph-bold ph-navigation-arrow"></i> ${tr('btn_locate')}`;
+                locText.style.color = 'var(--text-muted)';
+            }
+        }
     }
 
     async function triggerAnalysisInBackground(imagePath) {
@@ -718,8 +741,13 @@ document.addEventListener('DOMContentLoaded', () => {
         let data = null;
         let isPending = false;
 
+
         const analysisStr = record.ai_analysis;
-        if (!analysisStr || analysisStr === 'null' || analysisStr === 'undefined') {
+        // Specific check for empty string or stringified empty = Failure
+        if (analysisStr === "" || analysisStr === '""' || analysisStr === "{}") {
+            analysisError = { message: tr('analysis_failed_msg') };
+            isPending = false;
+        } else if (!analysisStr || analysisStr === 'null' || analysisStr === 'undefined') {
             isPending = true;
         } else {
             try {
@@ -740,19 +768,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // CHECK TIMEOUT FOR PENDING
         if (isPending && !analysisError) {
-            const createdTime = new Date(record.created_at).getTime();
-            const now = Date.now();
-            // If older than 2 minutes and still pending, treat as timeout/failure
-            // (Assuming server would have updated it by now if it was working)
-            if ((now - createdTime) > 2 * 60 * 1000) {
-                analysisError = { message: tr('analysis_failed_msg') };
-                isPending = false;
+            if (isPending && !analysisError) {
+                // Safari/iOS fix: Replace space with T for valid ISO date
+                const safeDateStr = record.created_at.replace(' ', 'T');
+                const createdTime = new Date(safeDateStr).getTime();
+                const now = Date.now();
+                // If older than 2 minutes and still pending, treat as timeout/failure
+                // (Assuming server would have updated it by now if it was working)
+                if ((now - createdTime) > 2 * 60 * 1000) {
+                    analysisError = { message: tr('analysis_failed_msg') };
+                    isPending = false;
+                }
             }
-        }
 
-        if (!isPending && data.validity && (!data.validity.is_stool || data.validity.privacy_issue)) {
-            recordToDeleteOnClose = record.id; // Mark for deletion on close
-            renderRejection(data.validity, record);
+            if (!isPending && data.validity && (!data.validity.is_stool || data.validity.privacy_issue)) {
+                recordToDeleteOnClose = record.id; // Mark for deletion on close
+                renderRejection(data.validity, record);
+                if (analysisOverlay) {
+                    analysisOverlay.classList.remove('hidden');
+                    // Force scroll reset after visible
+                    const card = analysisOverlay.querySelector('.modal-card');
+                    const body = analysisOverlay.querySelector('.modal-body');
+                    if (card) card.scrollTop = 0;
+                    if (body) body.scrollTop = 0;
+                }
+                return;
+            }
+
+            renderMedicalReport(data, record, isPending, analysisError);
             if (analysisOverlay) {
                 analysisOverlay.classList.remove('hidden');
                 // Force scroll reset after visible
@@ -761,24 +804,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (card) card.scrollTop = 0;
                 if (body) body.scrollTop = 0;
             }
-            return;
         }
 
-        renderMedicalReport(data, record, isPending, analysisError);
-        if (analysisOverlay) {
-            analysisOverlay.classList.remove('hidden');
-            // Force scroll reset after visible
-            const card = analysisOverlay.querySelector('.modal-card');
-            const body = analysisOverlay.querySelector('.modal-body');
-            if (card) card.scrollTop = 0;
-            if (body) body.scrollTop = 0;
-        }
-    }
+        function renderRejection(validity, record) {
+            const reason = validity.privacy_issue ? tr('privacy_issue') : (validity.rejection_reason || tr('not_valid_sample'));
 
-    function renderRejection(validity, record) {
-        const reason = validity.privacy_issue ? tr('privacy_issue') : (validity.rejection_reason || tr('not_valid_sample'));
-
-        let html = `
+            let html = `
             <div class="report-container" style="text-align:center; padding-top:20px;">
                  <div class="rejection-icon-wrapper" style="margin-bottom:20px;">
                     <i class="ph-fill ph-warning-octagon" style="font-size:3.5rem; color:#ef4444; filter: drop-shadow(0 4px 12px rgba(239,68,68,0.3));"></i>
@@ -794,26 +825,26 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        if (analysisText) analysisText.innerHTML = html;
-        // No delete button binding needed
-    }
-
-    function renderMedicalReport(data, record, isPending, analysisError = null) {
-        let html = '';
-
-        // Toggle Done Button (Hide on Error/Pending, Show on Success)
-        if (closeBtn) {
-            closeBtn.style.display = (isPending || analysisError) ? 'none' : 'block';
+            if (analysisText) analysisText.innerHTML = html;
+            // No delete button binding needed
         }
 
-        if (isPending || analysisError) {
-            const isError = !!analysisError;
-            const title = isError ? tr('analysis_failed_title') : tr('analysis_pending_title');
-            const msg = isError ? (analysisError.message || tr('analysis_failed_msg')) : tr('analysis_pending_msg');
-            const icon = isError ? `<i class="ph-fill ph-warning-octagon" style="font-size:3.5rem; color:#ef4444; margin-bottom:20px;"></i>` : `<div class="spinner" style="margin:0 auto 20px auto;"></div>`;
-            const retryBtnText = isError ? tr('btn_retry') : tr('btn_check_again');
+        function renderMedicalReport(data, record, isPending, analysisError = null) {
+            let html = '';
 
-            html = `
+            // Toggle Done Button (Hide on Error/Pending, Show on Success)
+            if (closeBtn) {
+                closeBtn.style.display = (isPending || analysisError) ? 'none' : 'block';
+            }
+
+            if (isPending || analysisError) {
+                const isError = !!analysisError;
+                const title = isError ? tr('analysis_failed_title') : tr('analysis_pending_title');
+                const msg = isError ? (analysisError.message || tr('analysis_failed_msg')) : tr('analysis_pending_msg');
+                const icon = isError ? `<i class="ph-fill ph-warning-octagon" style="font-size:3.5rem; color:#ef4444; margin-bottom:20px;"></i>` : `<div class="spinner" style="margin:0 auto 20px auto;"></div>`;
+                const retryBtnText = isError ? tr('btn_retry') : tr('btn_check_again');
+
+                html = `
                 <div class="report-container" style="text-align:center; padding-top:40px; height:100%; display:flex; flex-direction:column;">
                      <!-- Blurred Image (Still show if exists) -->
                     ${record.image_path ? `
@@ -841,22 +872,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
             `;
-        } else {
-            const bristolScale = data.bristol?.scale || 0;
-            const scaleDesc = data.bristol?.description || 'Unknown';
-            const warningLevel = data.color?.warning_level || 'none';
-            const warningColor = warningLevel === 'danger' ? '#ef4444' : (warningLevel === 'warning' ? '#f59e0b' : '#ccf381');
+            } else {
+                const bristolScale = data.bristol?.scale || 0;
+                const scaleDesc = data.bristol?.description || 'Unknown';
+                const warningLevel = data.color?.warning_level || 'none';
+                const warningColor = warningLevel === 'danger' ? '#ef4444' : (warningLevel === 'warning' ? '#f59e0b' : '#ccf381');
 
-            const effortMap = {
-                1: `😌 ${tr('val_easy')}`,
-                2: `😐 ${tr('val_normal')}`,
-                3: `😣 ${tr('val_hard')}`,
-                4: `🥵 ${tr('val_blocked')}`
-            };
-            const symptoms = record.symptoms ? (typeof record.symptoms === 'string' ? JSON.parse(record.symptoms) : record.symptoms) : [];
-            const triggers = record.triggers ? (typeof record.triggers === 'string' ? JSON.parse(record.triggers) : record.triggers) : [];
+                const effortMap = {
+                    1: `😌 ${tr('val_easy')}`,
+                    2: `😐 ${tr('val_normal')}`,
+                    3: `😣 ${tr('val_hard')}`,
+                    4: `🥵 ${tr('val_blocked')}`
+                };
+                const symptoms = record.symptoms ? (typeof record.symptoms === 'string' ? JSON.parse(record.symptoms) : record.symptoms) : [];
+                const triggers = record.triggers ? (typeof record.triggers === 'string' ? JSON.parse(record.triggers) : record.triggers) : [];
 
-            html = `
+                html = `
                 <div class="report-container">
                     <!-- BLURRED IMAGE SECTION -->
                     ${record.image_path ? `
@@ -933,9 +964,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="color-name" style="color:#fff;">
                                 ${data.color?.primary || 'Unknown'}
                                 ${warningLevel === 'none' || warningLevel === 'good'
-                    ? `<i class="ph-fill ph-check-circle" style="color:var(--accent-lime);"></i>`
-                    : `<i class="ph-fill ph-warning" style="color:${warningColor};"></i>`
-                }
+                        ? `<i class="ph-fill ph-check-circle" style="color:var(--accent-lime);"></i>`
+                        : `<i class="ph-fill ph-warning" style="color:${warningColor};"></i>`
+                    }
                             </div>
                             
                             <!-- Description / Disclaimer -->
@@ -985,104 +1016,116 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
             `;
-        }
-
-        if (analysisText) analysisText.innerHTML = html;
-
-        setTimeout(() => {
-            const retryBtn = document.getElementById('btn-retry-analysis');
-            if (retryBtn) retryBtn.onclick = async () => {
-                retryBtn.textContent = 'Checking...';
-
-                // If this was an error state, re-trigger the analysis first
-                if (analysisError) {
-                    try {
-                        await triggerAnalysisInBackground(record.image_path);
-                    } catch (e) {
-                        console.error("Retry failed:", e);
-                        // Re-render error state
-                        renderMedicalReport(null, record, false, e);
-                        return;
-                    }
-                }
-
-                await fetchRecords();
-                const res = await fetch(`/api/records?persona_id=${currentPersona.id}`, { headers: authHeaders });
-                const json = await res.json();
-                const freshRecord = json.data.find(r => r.id === record.id);
-                // Can pass error manually if still null, but usually if trigger succeeded, it might work now
-                if (freshRecord.ai_analysis) showAnalysis(freshRecord);
-                else {
-                    // Still pending?
-                    showAnalysis(freshRecord);
-                }
-            };
-
-            const delBtn = document.getElementById('btn-delete-record');
-            if (delBtn) delBtn.onclick = () => deleteRecord(record.id);
-        }, 100);
-    }
-
-    async function deleteRecord(id, silent = false) {
-        if (!silent && !confirm(tr('delete_confirm'))) return;
-        try {
-            const res = await fetch(`/api/records/${id}`, { method: 'DELETE', headers: authHeaders });
-            if (res.ok) {
-                analysisOverlay.classList.add('hidden');
-                fetchRecords();
-            } else {
-                alert("Delete failed");
             }
-        } catch (e) { console.error(e); }
-    }
 
-    function getBristolColor(scale) {
-        if (scale <= 2) return '#f59e0b';
-        if (scale >= 3 && scale <= 4) return '#ccf381';
-        if (scale >= 5) return '#ef4444';
-        return '#888';
-    }
+            if (analysisText) analysisText.innerHTML = html;
 
+            setTimeout(() => {
+                const retryBtn = document.getElementById('btn-retry-analysis');
+                if (retryBtn) retryBtn.onclick = async () => {
+                    retryBtn.innerHTML = '<i class="ph-bold ph-spinner ph-spin"></i> Checking...';
 
-    // --- EVENT LISTENERS ---
+                    // If error, OR if pending but we suspect it's stuck (empty analysis), force re-trigger
+                    // Also trigger if it was a "Timeout" error (message check)
+                    const isTimeout = analysisError && analysisError.message === tr('analysis_failed_msg');
+                    const needsTrigger = analysisError || !record.ai_analysis || record.ai_analysis === '""' || isTimeout;
 
-    // 1. File Upload
-    let pendingUploadFile = null; // Store for overlay
+                    if (needsTrigger) {
+                        try {
+                            console.log("Retrying analysis trigger...");
+                            // Only trigger if we have an image path
+                            if (record.image_path) {
+                                await triggerAnalysisInBackground(record.image_path);
+                            }
+                        } catch (e) {
+                            console.error("Retry failed:", e);
+                            // Re-render error state immediately
+                            renderMedicalReport(null, record, false, e);
+                            return;
+                        }
+                    }
 
-    if (photoInput) photoInput.addEventListener('change', async (e) => {
-        if (e.target.files.length === 0) return;
+                    // Wait a bit for DB to update if we triggered
+                    if (needsTrigger) await new Promise(r => setTimeout(r, 1000));
 
-        // Multi-Persona Check
-        if (personas.length > 1) {
-            e.preventDefault();
-            pendingUploadFile = e.target.files[0];
-            showPersonaSelector(pendingUploadFile);
-            return;
+                    await fetchRecords();
+                    const res = await fetch(`/api/records?persona_id=${currentPersona.id}`, { headers: authHeaders });
+                    const json = await res.json();
+                    const freshRecord = json.data.find(r => r.id === record.id);
+                    // Can pass error manually if still null, but usually if trigger succeeded, it might work now
+                    if (freshRecord.ai_analysis && freshRecord.ai_analysis !== '""') {
+                        showAnalysis(freshRecord);
+                    } else {
+                        // Still failing/pending? Show fresh state (will re-eval timeout)
+                        showAnalysis(freshRecord);
+                    }
+                };
+
+                const delBtn = document.getElementById('btn-delete-record');
+                if (delBtn) delBtn.onclick = () => deleteRecord(record.id);
+            }, 100);
         }
 
-        if (!currentPersona) {
-            alert("Please create a profile first.");
-            return;
+        async function deleteRecord(id, silent = false) {
+            if (!silent && !confirm(tr('delete_confirm'))) return;
+            try {
+                const res = await fetch(`/api/records/${id}`, { method: 'DELETE', headers: authHeaders });
+                if (res.ok) {
+                    analysisOverlay.classList.add('hidden');
+                    fetchRecords();
+                } else {
+                    alert("Delete failed");
+                }
+            } catch (e) { console.error(e); }
         }
 
-        performUpload(e.target.files[0], currentPersona.id);
-    });
+        function getBristolColor(scale) {
+            if (scale <= 2) return '#f59e0b';
+            if (scale >= 3 && scale <= 4) return '#ccf381';
+            if (scale >= 5) return '#ef4444';
+            return '#888';
+        }
 
-    // --- Helper: Show Persona Selector ---
-    function showPersonaSelector(file) {
-        const overlay = document.getElementById('persona-selector-overlay');
-        const previewImg = document.getElementById('persona-selector-preview'); // Changed from bg
-        const grid = document.getElementById('persona-selector-grid');
 
-        // Set Preview Image
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            previewImg.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
+        // --- EVENT LISTENERS ---
 
-        // Render Grid
-        grid.innerHTML = personas.map(p => `
+        // 1. File Upload
+        let pendingUploadFile = null; // Store for overlay
+
+        if (photoInput) photoInput.addEventListener('change', async (e) => {
+            if (e.target.files.length === 0) return;
+
+            // Multi-Persona Check
+            if (personas.length > 1) {
+                e.preventDefault();
+                pendingUploadFile = e.target.files[0];
+                showPersonaSelector(pendingUploadFile);
+                return;
+            }
+
+            if (!currentPersona) {
+                alert("Please create a profile first.");
+                return;
+            }
+
+            performUpload(e.target.files[0], currentPersona.id);
+        });
+
+        // --- Helper: Show Persona Selector ---
+        function showPersonaSelector(file) {
+            const overlay = document.getElementById('persona-selector-overlay');
+            const previewImg = document.getElementById('persona-selector-preview'); // Changed from bg
+            const grid = document.getElementById('persona-selector-grid');
+
+            // Set Preview Image
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+
+            // Render Grid
+            grid.innerHTML = personas.map(p => `
             <div class="persona-avatar-btn" onclick="handlePersonaSelection('${p.id}')">
                 <div class="avatar-circle-large" style="${p.specifics?.gender === 'female' ? 'border-color:#f472b6' : ''}">
                     ${p.nickname[0].toUpperCase()}
@@ -1091,597 +1134,713 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `).join('');
 
-        // Translate Header
-        overlay.querySelector('h3').textContent = tr('who_is_this_for');
-        const hintEl = overlay.querySelector('.sub-text') || overlay.querySelector('p');
-        if (hintEl) hintEl.textContent = tr('select_profile_hint');
-        document.getElementById('btn-cancel-upload').innerHTML = `<i class="ph-bold ph-x"></i> ${tr('cancel')}`;
+            // Translate Header
+            overlay.querySelector('h3').textContent = tr('who_is_this_for');
+            const hintEl = overlay.querySelector('.sub-text') || overlay.querySelector('p');
+            if (hintEl) hintEl.textContent = tr('select_profile_hint');
+            document.getElementById('btn-cancel-upload').innerHTML = `<i class="ph-bold ph-x"></i> ${tr('cancel')}`;
 
-        overlay.classList.remove('hidden');
+            overlay.classList.remove('hidden');
 
-        // Bind Cancel
-        document.getElementById('btn-cancel-upload').onclick = () => {
-            overlay.classList.add('hidden');
-            photoInput.value = ''; // Reset input
-            pendingUploadFile = null;
-        };
-    }
-
-    // --- Helper: Handle Selection ---
-    window.handlePersonaSelection = (personaId) => {
-        const selected = personas.find(p => p.id == personaId);
-        if (selected) {
-            switchPersona(selected); // Switch context
-            document.getElementById('persona-selector-overlay').classList.add('hidden');
-            performUpload(pendingUploadFile, personaId);
-        }
-    };
-
-    // --- Helper: Perform Actual Upload ---
-    // --- Helper: Perform Actual Upload ---
-    async function performUpload(file, personaId) {
-        // 1. Show UI Immediately
-        resetDashboard();
-        dashboardOverlay.classList.remove('hidden');
-        // Reset Scroll
-        const card = dashboardOverlay.querySelector('.modal-card');
-        const body = dashboardOverlay.querySelector('.dashboard-body');
-        if (card) card.scrollTop = 0;
-        if (body) body.scrollTop = 0;
-
-        // Check scroll hint
-        if (window.triggerScrollCheck) setTimeout(window.triggerScrollCheck, 100);
-
-
-        const formData = new FormData();
-        formData.append('photo', file);
-        formData.append('stool_type', 4);
-        formData.append('color', 'unknown');
-        formData.append('note', 'Auto-captured');
-        formData.append('persona_id', personaId);
-        formData.append('lang', appLang);
-
-        // Send Local Device Time
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hour = String(now.getHours()).padStart(2, '0');
-        const minute = String(now.getMinutes()).padStart(2, '0');
-        const second = String(now.getSeconds()).padStart(2, '0');
-        const localTimestamp = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
-        formData.append('local_timestamp', localTimestamp);
-
-        // 2. Start Upload (Async)
-        uploadTask = (async () => {
-            try {
-                const res = await fetch('/api/records', {
-                    method: 'POST',
-                    headers: { ...authHeaders },
-                    body: formData
-                });
-
-                if (res.status === 401 || res.status === 403) {
-                    logout();
-                    throw new Error("Auth failed");
-                }
-
-                if (res.ok) {
-                    const result = await res.json();
-                    currentRecordId = result.data.id;
-                    currentRecordPath = result.data.image_path;
-
-                    // Trigger AI
-                    pendingAnalysisPromise = triggerAnalysisInBackground(currentRecordPath);
-
-                    // Refresh list
-                    fetchRecords();
-
-                    return result.data;
-                } else {
-                    throw new Error("Upload failed");
-                }
-            } catch (err) {
-                console.error(err);
-                // Log Error to Analytics
-                fetch('/api/events', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...authHeaders },
-                    body: JSON.stringify({ event_type: 'upload_error', meta: { error: err.message } })
-                }).catch(e => console.error("Failed to log error", e));
-
-                alert("Error uploading file. Please try again.");
-                dashboardOverlay.classList.add('hidden');
-                throw err;
-            } finally {
-                uploadTask = null; // Reset
-            }
-
-
-
-        })();
-
-        photoInput.value = ''; // Reset
-    }
-
-    if (personaSwitcher) {
-        personaSwitcher.addEventListener('click', (e) => {
-            e.stopPropagation();
-            personaDropdown.classList.toggle('hidden');
-        });
-    }
-
-    if (btnAddPersona) btnAddPersona.addEventListener('click', () => openWizard());
-    if (btnLogout) btnLogout.addEventListener('click', logout);
-
-    // 3. Wizard & Dashboard Controls
-    if (btnWizardNext) {
-        btnWizardNext.addEventListener('click', () => {
-            const nickInput = document.getElementById('persona-nickname');
-            const dobInput = document.getElementById('persona-dob');
-            const genderEl = document.querySelector('#gender-control .selected');
-
-            if (!nickInput || !dobInput) return; // Should not happen if btnWizardNext exists
-
-            const nick = nickInput.value;
-            const dob = dobInput.value;
-
-            if (!nick || !dob) return alert("Nickname and DOB are required!");
-
-            wizardData.nickname = nick;
-            wizardData.dob = dob;
-            wizardData.gender = genderEl ? genderEl.dataset.value : 'male';
-
-            const birthDate = new Date(dob);
-            const ageInMonths = (new Date() - birthDate) / (1000 * 60 * 60 * 24 * 30.44);
-
-            document.getElementById('wizard-step-1').classList.add('hidden');
-
-            if (ageInMonths < 12) {
-                document.getElementById('wizard-step-baby').classList.remove('hidden');
-                wizardData.is_baby = true;
-            } else {
-                document.getElementById('wizard-step-adult').classList.remove('hidden');
-                wizardData.is_baby = false;
-            }
-        });
-    }
-
-    // Gender Selection
-    document.querySelectorAll('#gender-control .segment-option').forEach(el => {
-        el.addEventListener('click', () => {
-            document.querySelectorAll('#gender-control .segment-option').forEach(s => s.classList.remove('selected'));
-            el.classList.add('selected');
-        });
-    });
-
-    if (btnCreateBaby) {
-        btnCreateBaby.addEventListener('click', () => {
-            const feedingEl = document.querySelector('#baby-feeding-options .grid-option.selected');
-            const stageEl = document.querySelector('#baby-stage-options .grid-option.selected');
-            if (!feedingEl) return alert("Please select a feeding method!");
-
-            const payload = {
-                ...wizardData,
-                baby_feeding: feedingEl.dataset.value,
-                baby_stage: stageEl ? stageEl.dataset.value : 'New'
+            // Bind Cancel
+            document.getElementById('btn-cancel-upload').onclick = () => {
+                overlay.classList.add('hidden');
+                photoInput.value = ''; // Reset input
+                pendingUploadFile = null;
             };
-            createPersona(payload);
-        });
-    }
-
-    if (btnCreateAdult) {
-        btnCreateAdult.addEventListener('click', () => {
-            const health = Array.from(document.querySelectorAll('#adult-health-tags .tag.selected')).map(el => el.dataset.value);
-            const meds = Array.from(document.querySelectorAll('#adult-meds-tags .tag.selected')).map(el => el.dataset.value);
-
-            const payload = {
-                ...wizardData,
-                adult_health: health,
-                adult_meds: meds
-            };
-            createPersona(payload);
-        });
-    }
-
-    function setupSelection(selector, type = 'single') {
-        document.querySelectorAll(selector).forEach(el => {
-            el.addEventListener('click', () => {
-                if (type === 'single') {
-                    el.parentElement.querySelectorAll(el.className.split(' ')[0]).forEach(s => s.classList.remove('selected'));
-                    el.classList.add('selected');
-                } else {
-                    el.classList.toggle('selected');
-                }
-            });
-        });
-    };
-    setupSelection('#baby-feeding-options .grid-option');
-    setupSelection('#baby-stage-options .grid-option');
-    setupSelection('#adult-health-tags .tag', 'multi');
-    setupSelection('#adult-meds-tags .tag', 'multi');
-
-    // Dashboard Inputs
-    document.querySelectorAll('.effort-option').forEach(el => {
-        el.addEventListener('click', () => {
-            document.querySelectorAll('.effort-option').forEach(e => e.classList.remove('selected'));
-            el.classList.add('selected');
-            dashboardData.effort = parseInt(el.dataset.value);
-        });
-    });
-
-    const sensationToggle = document.getElementById('sensation-toggle');
-    if (sensationToggle) sensationToggle.addEventListener('change', (e) => dashboardData.sensation = e.target.checked ? 'incomplete' : 'complete');
-
-    document.querySelectorAll('#symptoms-tags .tag').forEach(el => {
-        el.addEventListener('click', () => {
-            el.classList.toggle('selected');
-            const val = el.dataset.value;
-            if (el.classList.contains('selected')) dashboardData.symptoms.push(val);
-            else dashboardData.symptoms = dashboardData.symptoms.filter(i => i !== val);
-        });
-    });
-
-    document.querySelectorAll('#triggers-grid .icon-item').forEach(el => {
-        el.addEventListener('click', () => {
-            el.classList.toggle('selected');
-            const val = el.dataset.value;
-            if (el.classList.contains('selected')) dashboardData.triggers.push(val);
-            else dashboardData.triggers = dashboardData.triggers.filter(i => i !== val);
-        });
-    });
-
-    document.querySelectorAll('.context-btn').forEach(el => {
-        el.addEventListener('click', () => {
-            document.querySelectorAll('.context-btn').forEach(e => e.classList.remove('selected'));
-            el.classList.add('selected');
-            dashboardData.location_context = el.dataset.value;
-        });
-    });
-
-    if (saveDetailsBtn) saveDetailsBtn.addEventListener('click', async () => {
-        // Show Spinner
-        loadingOverlay.classList.add('visible');
-
-        try {
-            // 0. Ensure Upload is Complete
-            if (!currentRecordId && uploadTask) {
-                await uploadTask;
-            }
-            if (!currentRecordId) throw new Error("No record ID available (Upload failed?)");
-
-            const res = await fetch(`/api/records/${currentRecordId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...authHeaders
-                },
-                body: JSON.stringify(dashboardData)
-            });
-            if (res.status === 401) return logout();
-
-            let analysisError = null;
-            // WAIT for Analysis to finish (if pending)
-            if (pendingAnalysisPromise) {
-                try {
-                    await pendingAnalysisPromise;
-                    pendingAnalysisPromise = null;
-                } catch (e) {
-                    console.error("Analysis failed during wait:", e);
-                    analysisError = e;
-                    // Do NOT throw here, we want to save details even if AI failed
-                }
-            }
-
-            await fetchRecords();
-            dashboardOverlay.classList.add('hidden');
-
-            // Hide Spinner
-            loadingOverlay.classList.remove('visible');
-
-            checkAndShowAnalysis(currentRecordPath, analysisError);
-        } catch (err) {
-            console.error(err);
-            loadingOverlay.classList.remove('visible');
-            alert("Failed to save details.");
-            dashboardOverlay.classList.add('hidden');
-        }
-        saveDetailsBtn.textContent = 'Save & View Analysis';
-    });
-
-    // --- SCROLL HINT OVERLAY ---
-    const dashboardBody = document.querySelector('.dashboard-body');
-    const modalCard = document.querySelector('#data-dashboard-overlay .modal-card');
-
-    if (dashboardBody && modalCard && !modalCard.querySelector('.scroll-more-hint')) {
-        // Create Hint Element
-        let scrollHint = document.createElement('div');
-        scrollHint.className = 'scroll-more-hint';
-        scrollHint.innerHTML = '<i class="ph-bold ph-caret-double-down"></i>';
-        modalCard.appendChild(scrollHint);
-
-        function checkScroll() {
-            // Buffer of 30px
-            const isBottom = dashboardBody.scrollTop + dashboardBody.clientHeight >= dashboardBody.scrollHeight - 30;
-            const hasOverflow = dashboardBody.scrollHeight > dashboardBody.clientHeight;
-
-            if (!isBottom && hasOverflow) {
-                scrollHint.classList.add('visible');
-            } else {
-                scrollHint.classList.remove('visible');
-            }
         }
 
-        dashboardBody.addEventListener('scroll', checkScroll);
-        window.addEventListener('resize', checkScroll);
-
-        // Expose to resetDashboard
-        window.triggerScrollCheck = checkScroll;
-    }
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            if (analysisOverlay) analysisOverlay.classList.add('hidden');
-            if (recordToDeleteOnClose) {
-                deleteRecord(recordToDeleteOnClose, true); // Silent delete
-                recordToDeleteOnClose = null;
+        // --- Helper: Handle Selection ---
+        window.handlePersonaSelection = (personaId) => {
+            const selected = personas.find(p => p.id == personaId);
+            if (selected) {
+                switchPersona(selected); // Switch context
+                document.getElementById('persona-selector-overlay').classList.add('hidden');
+                performUpload(pendingUploadFile, personaId);
             }
-        });
-    }
-
-    // --- INITIAL START ---
-    if (window.location.pathname.endsWith('settings.html')) {
-        loadProfilesForManagement();
-        setupEditInteractions();
-
-        // Bind Add New
-        const btnAddNew = document.getElementById('btn-add-new');
-        if (btnAddNew) btnAddNew.onclick = () => {
-            // Minimal Add:
-            document.getElementById('edit-id').value = ''; // Empty ID = New
-            document.getElementById('edit-name-display').textContent = 'New Profile';
-            document.getElementById('edit-nickname').value = '';
-            document.getElementById('edit-dob').value = '';
-
-            // Reset Avatar UI
-            document.getElementById('edit-avatar-upload').value = '';
-            document.getElementById('edit-avatar-img').style.display = 'none';
-            document.getElementById('edit-avatar-initial').style.display = 'block';
-            document.getElementById('edit-avatar-initial').textContent = '?';
-
-            document.getElementById('edit-overlay').classList.remove('hidden');
         };
 
-        // Bind Save Edit (Handles Create & Update) - FormData Version
-        document.getElementById('btn-save-edit').onclick = async () => {
-            const id = document.getElementById('edit-id').value;
-            const nickname = document.getElementById('edit-nickname').value;
-            const dob = document.getElementById('edit-dob').value;
+        // --- Helper: Perform Actual Upload ---
+        // --- Helper: Perform Actual Upload ---
+        async function performUpload(file, personaId) {
+            // 1. Show UI Immediately
+            resetDashboard();
+            dashboardOverlay.classList.remove('hidden');
+            // Reset Scroll
+            const card = dashboardOverlay.querySelector('.modal-card');
+            const body = dashboardOverlay.querySelector('.dashboard-body');
+            if (card) card.scrollTop = 0;
+            if (body) body.scrollTop = 0;
 
-            // Form Data for File Upload
+            // Check scroll hint
+            if (window.triggerScrollCheck) setTimeout(window.triggerScrollCheck, 100);
+
+
             const formData = new FormData();
-            formData.append('nickname', nickname);
-            formData.append('dob', dob);
+            formData.append('photo', file);
+            formData.append('stool_type', 4);
+            formData.append('color', 'unknown');
+            formData.append('note', 'Auto-captured');
+            formData.append('persona_id', personaId);
+            formData.append('lang', appLang);
 
-            // Gather Extras
-            const genderEl = document.querySelector('#edit-gender-control .selected');
-            const feedingEl = document.querySelector('#edit-baby-feeding .selected');
-            const stageEl = document.querySelector('#edit-baby-stage .selected');
+            // Send Local Device Time
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hour = String(now.getHours()).padStart(2, '0');
+            const minute = String(now.getMinutes()).padStart(2, '0');
+            const second = String(now.getSeconds()).padStart(2, '0');
+            const localTimestamp = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+            formData.append('local_timestamp', localTimestamp);
 
-            formData.append('gender', genderEl ? genderEl.dataset.value : 'unknown');
-            if (feedingEl) formData.append('baby_feeding', feedingEl.dataset.value);
-            if (stageEl) formData.append('baby_stage', stageEl.dataset.value);
+            // 2. Start Upload (Async)
+            uploadTask = (async () => {
+                try {
+                    const res = await fetch('/api/records', {
+                        method: 'POST',
+                        headers: { ...authHeaders },
+                        body: formData
+                    });
 
-            // Health (JSON stringify required for text fields if backend expects string)
-            // But since we use multipart, we can append arrays directly if backend handles it, 
-            // OR stringify them. Our backend expects JSON string in 'adult_health' TEXT column.
-            const healthTags = Array.from(document.querySelectorAll('#edit-adult-health .selected')).map(el => el.dataset.value);
-            const medTags = Array.from(document.querySelectorAll('#edit-adult-meds .selected')).map(el => el.dataset.value);
+                    if (res.status === 401 || res.status === 403) {
+                        logout();
+                        throw new Error("Auth failed");
+                    }
 
-            formData.append('adult_health', JSON.stringify(healthTags));
-            formData.append('adult_meds', JSON.stringify(medTags));
+                    if (res.ok) {
+                        const result = await res.json();
+                        currentRecordId = result.data.id;
+                        currentRecordPath = result.data.image_path;
 
-            // File
-            // Priority: Cropped Blob > Original Input
-            if (currentAvatarBlob) {
-                // Filename is arbitrary
-                formData.append('avatar', currentAvatarBlob, 'avatar.jpg');
-            } else {
-                const fileInput = document.getElementById('edit-avatar-upload');
-                if (fileInput.files[0]) {
-                    formData.append('avatar', fileInput.files[0]);
+                        // Trigger AI
+                        pendingAnalysisPromise = triggerAnalysisInBackground(currentRecordPath);
+
+                        // Refresh list
+                        fetchRecords();
+
+                        return result.data;
+                    } else {
+                        throw new Error("Upload failed");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    // Log Error to Analytics
+                    fetch('/api/events', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...authHeaders },
+                        body: JSON.stringify({ event_type: 'upload_error', meta: { error: err.message } })
+                    }).catch(e => console.error("Failed to log error", e));
+
+                    alert("Error uploading file. Please try again.");
+                    dashboardOverlay.classList.add('hidden');
+                    throw err;
+                } finally {
+                    uploadTask = null; // Reset
                 }
-            }
 
-            const method = id ? 'PUT' : 'POST';
-            const url = id ? `/api/personas/${id}` : '/api/personas';
 
-            try {
-                // Fetch automatically sets Content-Type to multipart/form-data with boundary when body is FormData
-                // We just need Authorization header
-                const res = await fetch(url, {
-                    method: method,
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: formData
-                });
 
-                if (res.ok) {
-                    document.getElementById('edit-overlay').classList.add('hidden');
-                    loadProfilesForManagement();
-                } else {
-                    alert('Failed to save profile');
-                }
-            } catch (e) { console.error(e); }
-        };
+            })();
 
-    } else {
-        // Only load main personas if NOT on settings page
-        if (!window.location.pathname.endsWith('settings.html')) {
-            loadPersonas();
+            photoInput.value = ''; // Reset
         }
-    }
 
-    // --- MANAGEMENT HELPERS ---
+        if (personaSwitcher) {
+            personaSwitcher.addEventListener('click', (e) => {
+                e.stopPropagation();
+                personaDropdown.classList.toggle('hidden');
+            });
+        }
 
-    // Helper: Calculate Age String
-    function getAgeString(dob) {
-        if (!dob) return '';
-        const diff = new Date() - new Date(dob);
-        const ageInMonths = diff / (1000 * 60 * 60 * 24 * 30.44);
-        if (ageInMonths < 12) return Math.floor(ageInMonths) + 'm';
-        return Math.floor(ageInMonths / 12) + 'y';
-    }
+        if (btnAddPersona) btnAddPersona.addEventListener('click', () => openWizard());
+        if (btnLogout) btnLogout.addEventListener('click', logout);
 
-    // Helper: Setup Edit Modal Interactions
-    function setupEditInteractions() {
-        // Gender Toggle
-        document.querySelectorAll('#edit-gender-control .segment-option').forEach(el => {
+        // 3. Wizard & Dashboard Controls
+        if (btnWizardNext) {
+            btnWizardNext.addEventListener('click', () => {
+                const nickInput = document.getElementById('persona-nickname');
+                const dobInput = document.getElementById('persona-dob');
+                const genderEl = document.querySelector('#gender-control .selected');
+
+                if (!nickInput || !dobInput) return; // Should not happen if btnWizardNext exists
+
+                const nick = nickInput.value;
+                const dob = dobInput.value;
+
+                if (!nick || !dob) return alert("Nickname and DOB are required!");
+
+                wizardData.nickname = nick;
+                wizardData.dob = dob;
+                wizardData.gender = genderEl ? genderEl.dataset.value : 'male';
+
+                const birthDate = new Date(dob);
+                const ageInMonths = (new Date() - birthDate) / (1000 * 60 * 60 * 24 * 30.44);
+
+                document.getElementById('wizard-step-1').classList.add('hidden');
+
+                if (ageInMonths < 12) {
+                    document.getElementById('wizard-step-baby').classList.remove('hidden');
+                    wizardData.is_baby = true;
+                } else {
+                    document.getElementById('wizard-step-adult').classList.remove('hidden');
+                    wizardData.is_baby = false;
+                }
+            });
+        }
+
+        // Gender Selection
+        document.querySelectorAll('#gender-control .segment-option').forEach(el => {
             el.addEventListener('click', () => {
-                document.querySelectorAll('#edit-gender-control .segment-option').forEach(s => s.classList.remove('selected'));
+                document.querySelectorAll('#gender-control .segment-option').forEach(s => s.classList.remove('selected'));
                 el.classList.add('selected');
             });
         });
 
-        // Grid Options (Feeding, Stage)
-        ['edit-baby-feeding', 'edit-baby-stage'].forEach(id => {
-            document.querySelectorAll(`#${id} .grid-option`).forEach(el => {
-                el.addEventListener('click', () => {
-                    el.parentElement.querySelectorAll('.grid-option').forEach(s => s.classList.remove('selected'));
-                    el.classList.add('selected');
-                });
-            });
-        });
+        if (btnCreateBaby) {
+            btnCreateBaby.addEventListener('click', () => {
+                const feedingEl = document.querySelector('#baby-feeding-options .grid-option.selected');
+                const stageEl = document.querySelector('#baby-stage-options .grid-option.selected');
+                if (!feedingEl) return alert("Please select a feeding method!");
 
-        // Tags (Health, Meds - Multi Select)
-        ['edit-adult-health', 'edit-adult-meds'].forEach(id => {
-            document.querySelectorAll(`#${id} .tag`).forEach(el => {
+                const payload = {
+                    ...wizardData,
+                    baby_feeding: feedingEl.dataset.value,
+                    baby_stage: stageEl ? stageEl.dataset.value : 'New'
+                };
+                createPersona(payload);
+            });
+        }
+
+        if (btnCreateAdult) {
+            btnCreateAdult.addEventListener('click', () => {
+                const health = Array.from(document.querySelectorAll('#adult-health-tags .tag.selected')).map(el => el.dataset.value);
+                const meds = Array.from(document.querySelectorAll('#adult-meds-tags .tag.selected')).map(el => el.dataset.value);
+
+                const payload = {
+                    ...wizardData,
+                    adult_health: health,
+                    adult_meds: meds
+                };
+                createPersona(payload);
+            });
+        }
+
+        function setupSelection(selector, type = 'single') {
+            document.querySelectorAll(selector).forEach(el => {
                 el.addEventListener('click', () => {
-                    const val = el.dataset.value;
-                    if (val === 'none') {
-                        // Exclusive 'none'
-                        el.parentElement.querySelectorAll('.tag').forEach(s => s.classList.remove('selected'));
+                    if (type === 'single') {
+                        el.parentElement.querySelectorAll(el.className.split(' ')[0]).forEach(s => s.classList.remove('selected'));
                         el.classList.add('selected');
                     } else {
-                        // Deselect 'none' if others selected
-                        const noneTag = el.parentElement.querySelector('.tag[data-value="none"]');
-                        if (noneTag) noneTag.classList.remove('selected');
                         el.classList.toggle('selected');
                     }
                 });
             });
+        };
+        setupSelection('#baby-feeding-options .grid-option');
+        setupSelection('#baby-stage-options .grid-option');
+        setupSelection('#adult-health-tags .tag', 'multi');
+        setupSelection('#adult-meds-tags .tag', 'multi');
+
+        // Dashboard Inputs
+        document.querySelectorAll('.effort-option').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('.effort-option').forEach(e => e.classList.remove('selected'));
+                el.classList.add('selected');
+                dashboardData.effort = parseInt(el.dataset.value);
+            });
         });
 
-        // DOB Change Trigger
-        document.getElementById('edit-dob').addEventListener('change', (e) => toggleEditSections(e.target.value));
+        const sensationToggle = document.getElementById('sensation-toggle');
+        if (sensationToggle) sensationToggle.addEventListener('change', (e) => dashboardData.sensation = e.target.checked ? 'incomplete' : 'complete');
 
-        // File Input -> Crop Modal
-        document.getElementById('edit-avatar-upload').addEventListener('change', function (e) {
-            if (e.target.files && e.target.files[0]) {
-                const reader = new FileReader();
-                reader.onload = function (evt) {
-                    // Open Crop Modal
-                    const cropImg = document.getElementById('crop-image');
-                    cropImg.src = evt.target.result;
-                    document.getElementById('crop-modal').classList.remove('hidden');
+        document.querySelectorAll('#symptoms-tags .tag').forEach(el => {
+            el.addEventListener('click', () => {
+                el.classList.toggle('selected');
+                const val = el.dataset.value;
+                if (el.classList.contains('selected')) dashboardData.symptoms.push(val);
+                else dashboardData.symptoms = dashboardData.symptoms.filter(i => i !== val);
+            });
+        });
 
-                    // Init Cropper
-                    if (window.cropper) window.cropper.destroy();
-                    window.cropper = new Cropper(cropImg, {
-                        aspectRatio: 1,
-                        viewMode: 1,
-                        dragMode: 'move', // Default to moving canvas on touch
-                        autoCropArea: 0.8,
-                        restore: false,
-                        guides: false,
-                        center: false,
-                        highlight: false,
-                        cropBoxMovable: true,
-                        cropBoxResizable: true,
-                        toggleDragModeOnDblclick: false,
-                        background: false // Clean look
+        document.querySelectorAll('#triggers-grid .icon-item').forEach(el => {
+            el.addEventListener('click', () => {
+                el.classList.toggle('selected');
+                const val = el.dataset.value;
+                if (el.classList.contains('selected')) dashboardData.triggers.push(val);
+                else dashboardData.triggers = dashboardData.triggers.filter(i => i !== val);
+            });
+        });
+
+        document.querySelectorAll('.context-btn').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('.context-btn').forEach(e => e.classList.remove('selected'));
+                el.classList.add('selected');
+                dashboardData.location_context = el.dataset.value;
+            });
+        });
+
+        if (saveDetailsBtn) saveDetailsBtn.addEventListener('click', async () => {
+            // Show Spinner
+            loadingOverlay.classList.add('visible');
+
+            try {
+                // 0. Ensure Upload is Complete
+                if (!currentRecordId && uploadTask) {
+                    await uploadTask;
+                }
+                if (!currentRecordId) throw new Error("No record ID available (Upload failed?)");
+
+                const res = await fetch(`/api/records/${currentRecordId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...authHeaders
+                    },
+                    body: JSON.stringify(dashboardData)
+                });
+                if (res.status === 401) return logout();
+
+                let analysisError = null;
+                // WAIT for Analysis to finish (if pending)
+                if (pendingAnalysisPromise) {
+                    try {
+                        await pendingAnalysisPromise;
+                        pendingAnalysisPromise = null;
+                    } catch (e) {
+                        console.error("Analysis failed during wait:", e);
+                        analysisError = e;
+                        // Do NOT throw here, we want to save details even if AI failed
+                    }
+                }
+
+                await fetchRecords();
+                dashboardOverlay.classList.add('hidden');
+
+                // Hide Spinner
+                loadingOverlay.classList.remove('visible');
+
+                checkAndShowAnalysis(currentRecordPath, analysisError);
+            } catch (err) {
+                console.error(err);
+                loadingOverlay.classList.remove('visible');
+                alert("Failed to save details.");
+                dashboardOverlay.classList.add('hidden');
+            }
+            saveDetailsBtn.textContent = 'Save & View Analysis';
+        });
+
+        // --- SCROLL HINT OVERLAY ---
+        const dashboardBody = document.querySelector('.dashboard-body');
+        const modalCard = document.querySelector('#data-dashboard-overlay .modal-card');
+
+        if (dashboardBody && modalCard && !modalCard.querySelector('.scroll-more-hint')) {
+            // Create Hint Element
+            let scrollHint = document.createElement('div');
+            scrollHint.className = 'scroll-more-hint';
+            scrollHint.innerHTML = '<i class="ph-bold ph-caret-double-down"></i>';
+            modalCard.appendChild(scrollHint);
+
+            function checkScroll() {
+                // Buffer of 30px
+                const isBottom = dashboardBody.scrollTop + dashboardBody.clientHeight >= dashboardBody.scrollHeight - 30;
+                const hasOverflow = dashboardBody.scrollHeight > dashboardBody.clientHeight;
+
+                if (!isBottom && hasOverflow) {
+                    scrollHint.classList.add('visible');
+                } else {
+                    scrollHint.classList.remove('visible');
+                }
+            }
+
+            dashboardBody.addEventListener('scroll', checkScroll);
+            window.addEventListener('resize', checkScroll);
+
+            // Expose to resetDashboard
+            window.triggerScrollCheck = checkScroll;
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                if (analysisOverlay) analysisOverlay.classList.add('hidden');
+                if (recordToDeleteOnClose) {
+                    deleteRecord(recordToDeleteOnClose, true); // Silent delete
+                    recordToDeleteOnClose = null;
+                }
+            });
+        }
+
+        // --- INITIAL START ---
+        if (window.location.pathname.endsWith('settings.html')) {
+            loadProfilesForManagement();
+            setupEditInteractions();
+
+            // Bind Add New
+            const btnAddNew = document.getElementById('btn-add-new');
+            if (btnAddNew) btnAddNew.onclick = () => {
+                // Minimal Add:
+                document.getElementById('edit-id').value = ''; // Empty ID = New
+                document.getElementById('edit-name-display').textContent = 'New Profile';
+                document.getElementById('edit-nickname').value = '';
+                document.getElementById('edit-dob').value = '';
+
+                // Reset Avatar UI
+                document.getElementById('edit-avatar-upload').value = '';
+                document.getElementById('edit-avatar-img').style.display = 'none';
+                document.getElementById('edit-avatar-initial').style.display = 'block';
+                document.getElementById('edit-avatar-initial').textContent = '?';
+
+                document.getElementById('edit-overlay').classList.remove('hidden');
+            };
+
+            // Bind Save Edit (Handles Create & Update) - FormData Version
+            document.getElementById('btn-save-edit').onclick = async () => {
+                const id = document.getElementById('edit-id').value;
+                const nickname = document.getElementById('edit-nickname').value;
+                const dob = document.getElementById('edit-dob').value;
+
+                // Form Data for File Upload
+                const formData = new FormData();
+                formData.append('nickname', nickname);
+                formData.append('dob', dob);
+
+                // Gather Extras
+                const genderEl = document.querySelector('#edit-gender-control .selected');
+                const feedingEl = document.querySelector('#edit-baby-feeding .selected');
+                const stageEl = document.querySelector('#edit-baby-stage .selected');
+
+                formData.append('gender', genderEl ? genderEl.dataset.value : 'unknown');
+                if (feedingEl) formData.append('baby_feeding', feedingEl.dataset.value);
+                if (stageEl) formData.append('baby_stage', stageEl.dataset.value);
+
+                // Health (JSON stringify required for text fields if backend expects string)
+                // But since we use multipart, we can append arrays directly if backend handles it, 
+                // OR stringify them. Our backend expects JSON string in 'adult_health' TEXT column.
+                const healthTags = Array.from(document.querySelectorAll('#edit-adult-health .selected')).map(el => el.dataset.value);
+                const medTags = Array.from(document.querySelectorAll('#edit-adult-meds .selected')).map(el => el.dataset.value);
+
+                formData.append('adult_health', JSON.stringify(healthTags));
+                formData.append('adult_meds', JSON.stringify(medTags));
+
+                // File
+                // Priority: Cropped Blob > Original Input
+                if (currentAvatarBlob) {
+                    // Filename is arbitrary
+                    formData.append('avatar', currentAvatarBlob, 'avatar.jpg');
+                } else {
+                    const fileInput = document.getElementById('edit-avatar-upload');
+                    if (fileInput.files[0]) {
+                        formData.append('avatar', fileInput.files[0]);
+                    }
+                }
+
+                const method = id ? 'PUT' : 'POST';
+                const url = id ? `/api/personas/${id}` : '/api/personas';
+
+                try {
+                    // Fetch automatically sets Content-Type to multipart/form-data with boundary when body is FormData
+                    // We just need Authorization header
+                    const res = await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: formData
+                    });
+
+                    if (res.ok) {
+                        document.getElementById('edit-overlay').classList.add('hidden');
+                        loadProfilesForManagement();
+                    } else {
+                        alert('Failed to save profile');
+                    }
+                } catch (e) { console.error(e); }
+            };
+
+        } else {
+            // Only load main personas if NOT on settings page
+            if (!window.location.pathname.endsWith('settings.html')) {
+                loadPersonas();
+            }
+        }
+
+        // --- MANAGEMENT HELPERS ---
+
+        // Helper: Calculate Age String
+        function getAgeString(dob) {
+            if (!dob) return '';
+            const diff = new Date() - new Date(dob);
+            const ageInMonths = diff / (1000 * 60 * 60 * 24 * 30.44);
+            if (ageInMonths < 12) return Math.floor(ageInMonths) + 'm';
+            return Math.floor(ageInMonths / 12) + 'y';
+        }
+
+        // Helper: Setup Edit Modal Interactions
+        function setupEditInteractions() {
+            // Gender Toggle
+            document.querySelectorAll('#edit-gender-control .segment-option').forEach(el => {
+                el.addEventListener('click', () => {
+                    document.querySelectorAll('#edit-gender-control .segment-option').forEach(s => s.classList.remove('selected'));
+                    el.classList.add('selected');
+                });
+            });
+
+            // Grid Options (Feeding, Stage)
+            ['edit-baby-feeding', 'edit-baby-stage'].forEach(id => {
+                document.querySelectorAll(`#${id} .grid-option`).forEach(el => {
+                    el.addEventListener('click', () => {
+                        el.parentElement.querySelectorAll('.grid-option').forEach(s => s.classList.remove('selected'));
+                        el.classList.add('selected');
+                    });
+                });
+            });
+
+            // Tags (Health, Meds - Multi Select)
+            ['edit-adult-health', 'edit-adult-meds'].forEach(id => {
+                document.querySelectorAll(`#${id} .tag`).forEach(el => {
+                    el.addEventListener('click', () => {
+                        const val = el.dataset.value;
+                        if (val === 'none') {
+                            // Exclusive 'none'
+                            el.parentElement.querySelectorAll('.tag').forEach(s => s.classList.remove('selected'));
+                            el.classList.add('selected');
+                        } else {
+                            // Deselect 'none' if others selected
+                            const noneTag = el.parentElement.querySelector('.tag[data-value="none"]');
+                            if (noneTag) noneTag.classList.remove('selected');
+                            el.classList.toggle('selected');
+                        }
+                    });
+                });
+            });
+
+            // DOB Change Trigger
+            document.getElementById('edit-dob').addEventListener('change', (e) => toggleEditSections(e.target.value));
+
+            // File Input -> Crop Modal
+            document.getElementById('edit-avatar-upload').addEventListener('change', function (e) {
+                if (e.target.files && e.target.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = function (evt) {
+                        // Open Crop Modal
+                        const cropImg = document.getElementById('crop-image');
+                        cropImg.src = evt.target.result;
+                        document.getElementById('crop-modal').classList.remove('hidden');
+
+                        // Init Cropper
+                        if (window.cropper) window.cropper.destroy();
+                        window.cropper = new Cropper(cropImg, {
+                            aspectRatio: 1,
+                            viewMode: 1,
+                            dragMode: 'move', // Default to moving canvas on touch
+                            autoCropArea: 0.8,
+                            restore: false,
+                            guides: false,
+                            center: false,
+                            highlight: false,
+                            cropBoxMovable: true,
+                            cropBoxResizable: true,
+                            toggleDragModeOnDblclick: false,
+                            background: false // Clean look
+                        });
+                    }
+                    reader.readAsDataURL(e.target.files[0]);
+                }
+                // Reset value so same file can be selected again if cancelled
+                e.target.value = '';
+            });
+
+            // Rotation
+            document.getElementById('btn-rotate-left').onclick = () => window.cropper && window.cropper.rotate(-90);
+            document.getElementById('btn-rotate-right').onclick = () => window.cropper && window.cropper.rotate(90);
+
+            // Confirm Crop
+            document.getElementById('btn-confirm-crop').onclick = () => {
+                if (window.cropper) {
+                    window.cropper.getCroppedCanvas({ width: 512, height: 512 }).toBlob((blob) => {
+                        // Store blob globally for save
+                        window.currentAvatarBlob = blob;
+
+                        // Update Preview
+                        const url = URL.createObjectURL(blob);
+                        const img = document.getElementById('edit-avatar-img');
+                        const initial = document.getElementById('edit-avatar-initial');
+                        img.src = url;
+                        img.style.display = 'block';
+                        initial.style.display = 'none';
+
+                        // Close Modal
+                        closeCropModal();
+                    }, 'image/jpeg', 0.9);
+                }
+            };
+
+            // Expose close helper
+            window.closeCropModal = () => {
+                document.getElementById('crop-modal').classList.add('hidden');
+                if (window.cropper) {
+                    window.cropper.destroy();
+                    window.cropper = null;
+                }
+            };
+        }
+
+        function toggleEditSections(dobVal) {
+            if (!dobVal) return;
+            const ageInMonths = (new Date() - new Date(dobVal)) / (1000 * 60 * 60 * 24 * 30.44);
+
+            const babySec = document.getElementById('edit-baby-section');
+            const adultSec = document.getElementById('edit-adult-section');
+
+            if (ageInMonths < 12) {
+                babySec.classList.remove('hidden');
+                adultSec.classList.add('hidden');
+            } else {
+                babySec.classList.add('hidden');
+                adultSec.classList.remove('hidden');
+            }
+        }
+
+        // --- LOCATION SERVICE ---
+
+        // Bind Manual Trigger
+        const locationTrigger = document.getElementById('location-city-text');
+        if (locationTrigger) {
+            locationTrigger.addEventListener('click', () => {
+                // Force trigger
+                localStorage.setItem('geo_perm', 'allowed'); // Mark as intent
+                fetchCityAndDisplay();
+            });
+        }
+
+        function tryAutoLocate() {
+            // Only run if permission was previously granted or user hasn't explicitly denied (handled by browser, but we track our intent)
+            // Rule: If user rejected once, don't ask again.
+            // We use 'geo_perm' = 'denied' in localStorage to track internal "Don't Ask Again".
+
+            const status = localStorage.getItem('geo_perm');
+            if (status === 'denied') return; // Do nothing
+
+            // If granted/unknown, try it. Browser handles the actual "Allow/Block" prompt.
+            fetchCityAndDisplay();
+        }
+
+        function fetchCityAndDisplay() {
+            const locText = document.getElementById('location-city-text');
+            if (!locText) return;
+
+            locText.innerHTML = `<i class="ph-bold ph-spinner ph-spin"></i> ${tr('loc_locating')}`;
+
+            if (!navigator.geolocation) {
+                locText.textContent = "Not supported";
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    // Success
+                    localStorage.setItem('geo_perm', 'granted');
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+
+                    try {
+                        // Reverse Geocode (BigDataCloud - Free, Client-side friendly)
+                        // https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=37.42159&longitude=-122.0837&localityLanguage=en
+                        const langCode = appLang === 'zh' ? 'zh' : 'en';
+                        const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=${langCode}`);
+                        const json = await res.json();
+
+                        // Priority: Locality (City) > PrincipalSubdivision (State/Province) > Country
+                        const city = json.locality || json.city || json.principalSubdivision || 'Unknown Location';
+
+                        dashboardData.location_city = city;
+
+                        // Valid UI
+                        locText.innerHTML = `<i class="ph-fill ph-check-circle" style="color:var(--accent-lime);"></i> ${city}`;
+                        locText.style.color = '#fff';
+
+                    } catch (e) {
+                        console.error("Reverse geo failed", e);
+                        locText.textContent = 'Found coordinates, but city unknown';
+                        dashboardData.location_city = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+                    }
+                },
+                (err) => {
+                    // Error / Denied
+                    console.warn("Geo error", err);
+                    if (err.code === 1) { // PERMISSION_DENIED
+                        localStorage.setItem('geo_perm', 'denied'); // Remember denial
+                        locText.innerHTML = `<i class="ph-bold ph-eye-slash"></i> ${tr('btn_locate')}`; // Revert to "Add Location" but maybe visually distinct? 
+                        locText.style.color = 'var(--text-muted)';
+                    } else {
+                        locText.innerHTML = `<span style="color:#ef4444;">${tr('loc_failed')}</span>`;
+                    }
+                },
+                { enableHighAccuracy: false, timeout: 5000 }
+            );
+        }
+
+
+
+        async function loadPersonas() {
+            try {
+                const res = await fetch('/api/personas', { headers: authHeaders });
+                const json = await res.json();
+                personas = json.data;
+
+                const list = document.getElementById('persona-list');
+                if (list) {
+                    list.innerHTML = '';
+                    personas.forEach(p => {
+                        const div = document.createElement('div');
+                        div.className = 'persona-option';
+                        div.style.cursor = 'pointer';
+                        div.innerHTML = `
+                            ${p.avatar_path ? `<img src="${p.avatar_path}" style="width:24px; height:24px; border-radius:50%; object-fit:cover; margin-right:8px;">` : `<i class="ph-fill ph-user-circle" style="margin-right:8px;"></i>`}
+                            <span>${p.nickname}</span>
+                            ${p.is_baby ? '<i class="ph-fill ph-baby" style="font-size:0.8rem; margin-left:auto; opacity:0.5;"></i>' : ''}
+                        `;
+                        div.addEventListener('click', () => {
+                            switchPersona(p);
+                            document.getElementById('persona-dropdown').classList.add('hidden');
+                        });
+                        list.appendChild(div);
                     });
                 }
-                reader.readAsDataURL(e.target.files[0]);
-            }
-            // Reset value so same file can be selected again if cancelled
-            e.target.value = '';
-        });
 
-        // Rotation
-        document.getElementById('btn-rotate-left').onclick = () => window.cropper && window.cropper.rotate(-90);
-        document.getElementById('btn-rotate-right').onclick = () => window.cropper && window.cropper.rotate(90);
-
-        // Confirm Crop
-        document.getElementById('btn-confirm-crop').onclick = () => {
-            if (window.cropper) {
-                window.cropper.getCroppedCanvas({ width: 512, height: 512 }).toBlob((blob) => {
-                    // Store blob globally for save
-                    window.currentAvatarBlob = blob;
-
-                    // Update Preview
-                    const url = URL.createObjectURL(blob);
-                    const img = document.getElementById('edit-avatar-img');
-                    const initial = document.getElementById('edit-avatar-initial');
-                    img.src = url;
-                    img.style.display = 'block';
-                    initial.style.display = 'none';
-
-                    // Close Modal
-                    closeCropModal();
-                }, 'image/jpeg', 0.9);
-            }
-        };
-
-        // Expose close helper
-        window.closeCropModal = () => {
-            document.getElementById('crop-modal').classList.add('hidden');
-            if (window.cropper) {
-                window.cropper.destroy();
-                window.cropper = null;
-            }
-        };
-    }
-
-    function toggleEditSections(dobVal) {
-        if (!dobVal) return;
-        const ageInMonths = (new Date() - new Date(dobVal)) / (1000 * 60 * 60 * 24 * 30.44);
-
-        const babySec = document.getElementById('edit-baby-section');
-        const adultSec = document.getElementById('edit-adult-section');
-
-        if (ageInMonths < 12) {
-            babySec.classList.remove('hidden');
-            adultSec.classList.add('hidden');
-        } else {
-            babySec.classList.add('hidden');
-            adultSec.classList.remove('hidden');
+                if (personas.length > 0) {
+                    const savedId = localStorage.getItem('current_persona_id');
+                    const target = personas.find(p => p.id == savedId) || personas[0];
+                    switchPersona(target);
+                } else {
+                    // Show wizard if no profiles
+                    document.getElementById('persona-wizard-overlay').classList.remove('hidden');
+                }
+            } catch (e) { console.error("loadPersonas failed", e); }
         }
-    }
 
+        async function loadProfilesForManagement() {
+            const listEl = document.getElementById('profiles-list');
+            if (!listEl) return;
 
+            listEl.innerHTML = '<div class="spinner"></div>';
 
-    async function loadProfilesForManagement() {
-        const listEl = document.getElementById('profiles-list');
-        if (!listEl) return;
+            try {
+                const res = await fetch('/api/personas', { headers: authHeaders });
+                if (res.status === 401) return window.location.href = 'login.html';
+                const json = await res.json();
+                personas = json.data;
 
-        listEl.innerHTML = '<div class="spinner"></div>';
-
-        try {
-            const res = await fetch('/api/personas', { headers: authHeaders });
-            if (res.status === 401) return window.location.href = 'login.html';
-            const json = await res.json();
-            personas = json.data;
-
-            listEl.innerHTML = personas.map(p => `
+                listEl.innerHTML = personas.map(p => `
                 <div class="bento-row-card">
                     <div style="display:flex; align-items:center; gap:20px;">
                          <div class="avatar-circle-large" style="width:56px; height:56px; font-size:1.4rem; ${p.gender === 'female' ? 'border-color:rgba(244,114,182,0.4)' : ''}">
                             ${p.avatar_path
-                    ? `<img src="${p.avatar_path}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
-                    : p.nickname[0].toUpperCase()
-                }
+                        ? `<img src="${p.avatar_path}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`
+                        : p.nickname[0].toUpperCase()
+                    }
                         </div>
                         <div>
                             <div style="font-weight:700; font-size:1.2rem; margin-bottom:4px;">${p.nickname}</div>
@@ -1702,184 +1861,185 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
             `).join('');
-        } catch (e) {
-            console.error(e);
-        }
-    }
-
-    window.openEditProfile = (id) => {
-        const p = personas.find(x => x.id == id);
-        if (!p) return;
-
-        // Basic Info
-        document.getElementById('edit-id').value = p.id;
-        document.getElementById('edit-name-display').textContent = p.nickname;
-        document.getElementById('edit-nickname').value = p.nickname;
-        document.getElementById('edit-dob').value = p.dob;
-
-        // Avatar Reset/Load
-        const img = document.getElementById('edit-avatar-img');
-        const initial = document.getElementById('edit-avatar-initial');
-        document.getElementById('edit-avatar-upload').value = ''; // Reset input
-        window.currentAvatarBlob = null; // Clear any pending crop
-
-        if (p.avatar_path) {
-            img.src = p.avatar_path;
-            img.style.display = 'block';
-            initial.style.display = 'none';
-        } else {
-            img.src = '';
-            img.style.display = 'none';
-            initial.style.display = 'block';
-            initial.textContent = p.nickname[0].toUpperCase();
+            } catch (e) {
+                console.error(e);
+            }
         }
 
-        // Gender
-        document.querySelectorAll('#edit-gender-control .segment-option').forEach(el => {
-            el.classList.toggle('selected', el.dataset.value === (p.gender || 'male'));
-        });
+        window.openEditProfile = (id) => {
+            const p = personas.find(x => x.id == id);
+            if (!p) return;
 
-        // Trigger Section Toggle
-        toggleEditSections(p.dob);
+            // Basic Info
+            document.getElementById('edit-id').value = p.id;
+            document.getElementById('edit-name-display').textContent = p.nickname;
+            document.getElementById('edit-nickname').value = p.nickname;
+            document.getElementById('edit-dob').value = p.dob;
 
-        // Baby Specifics
-        document.querySelectorAll('#edit-baby-feeding .grid-option').forEach(el => {
-            el.classList.toggle('selected', el.dataset.value === p.baby_feeding);
-        });
-        document.querySelectorAll('#edit-baby-stage .grid-option').forEach(el => {
-            el.classList.toggle('selected', el.dataset.value === p.baby_stage);
-        });
+            // Avatar Reset/Load
+            const img = document.getElementById('edit-avatar-img');
+            const initial = document.getElementById('edit-avatar-initial');
+            document.getElementById('edit-avatar-upload').value = ''; // Reset input
+            window.currentAvatarBlob = null; // Clear any pending crop
 
-        // Adult Specifics
-        let healthArr = [];
-        try { healthArr = JSON.parse(p.adult_health || '[]'); } catch (e) { }
-        document.querySelectorAll('#edit-adult-health .tag').forEach(el => {
-            el.classList.toggle('selected', healthArr.includes(el.dataset.value));
-        });
-
-        let medsArr = [];
-        try { medsArr = JSON.parse(p.adult_meds || '[]'); } catch (e) { }
-        document.querySelectorAll('#edit-adult-meds .tag').forEach(el => {
-            el.classList.toggle('selected', medsArr.includes(el.dataset.value));
-        });
-
-        document.getElementById('edit-overlay').classList.remove('hidden');
-    };
-
-    window.deleteProfile = async (id) => {
-        if (!confirm(tr('delete_profile_confirm'))) return;
-        try {
-            const res = await fetch(`/api/personas/${id}`, { method: 'DELETE', headers: authHeaders });
-            if (res.ok) loadProfilesForManagement();
-            else alert("Delete failed");
-        } catch (e) { console.error(e); }
-    };
-
-    // Change Password Logic
-    const btnSubmitPassword = document.getElementById('btn-submit-password');
-    if (btnSubmitPassword) {
-        btnSubmitPassword.addEventListener('click', async () => {
-            const oldPass = document.getElementById('old-password').value;
-            const newPass = document.getElementById('new-password').value;
-            const confirmPass = document.getElementById('confirm-password').value;
-            const errorEl = document.getElementById('password-error');
-
-            errorEl.style.display = 'none';
-
-            if (!oldPass || !newPass || !confirmPass) {
-                errorEl.textContent = 'All fields are required';
-                errorEl.style.display = 'block';
-                return;
+            if (p.avatar_path) {
+                img.src = p.avatar_path;
+                img.style.display = 'block';
+                initial.style.display = 'none';
+            } else {
+                img.src = '';
+                img.style.display = 'none';
+                initial.style.display = 'block';
+                initial.textContent = p.nickname[0].toUpperCase();
             }
 
-            if (newPass !== confirmPass) {
-                errorEl.textContent = 'New passwords do not match';
-                errorEl.style.display = 'block';
-                return;
-            }
+            // Gender
+            document.querySelectorAll('#edit-gender-control .segment-option').forEach(el => {
+                el.classList.toggle('selected', el.dataset.value === (p.gender || 'male'));
+            });
 
+            // Trigger Section Toggle
+            toggleEditSections(p.dob);
+
+            // Baby Specifics
+            document.querySelectorAll('#edit-baby-feeding .grid-option').forEach(el => {
+                el.classList.toggle('selected', el.dataset.value === p.baby_feeding);
+            });
+            document.querySelectorAll('#edit-baby-stage .grid-option').forEach(el => {
+                el.classList.toggle('selected', el.dataset.value === p.baby_stage);
+            });
+
+            // Adult Specifics
+            let healthArr = [];
+            try { healthArr = JSON.parse(p.adult_health || '[]'); } catch (e) { }
+            document.querySelectorAll('#edit-adult-health .tag').forEach(el => {
+                el.classList.toggle('selected', healthArr.includes(el.dataset.value));
+            });
+
+            let medsArr = [];
+            try { medsArr = JSON.parse(p.adult_meds || '[]'); } catch (e) { }
+            document.querySelectorAll('#edit-adult-meds .tag').forEach(el => {
+                el.classList.toggle('selected', medsArr.includes(el.dataset.value));
+            });
+
+            document.getElementById('edit-overlay').classList.remove('hidden');
+        };
+
+        window.deleteProfile = async (id) => {
+            if (!confirm(tr('delete_profile_confirm'))) return;
             try {
-                const res = await fetch('/api/auth/change-password', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...authHeaders },
-                    body: JSON.stringify({ oldPassword: oldPass, newPassword: newPass })
-                });
+                const res = await fetch(`/api/personas/${id}`, { method: 'DELETE', headers: authHeaders });
+                if (res.ok) loadProfilesForManagement();
+                else alert("Delete failed");
+            } catch (e) { console.error(e); }
+        };
 
-                const json = await res.json();
-                if (res.ok) {
-                    alert(tr('msg_password_updated'));
-                    document.getElementById('change-password-overlay').classList.add('hidden');
-                    // Clear inputs
-                    document.getElementById('old-password').value = '';
-                    document.getElementById('new-password').value = '';
-                    document.getElementById('confirm-password').value = '';
-                } else {
-                    errorEl.textContent = json.error;
+        // Change Password Logic
+        const btnSubmitPassword = document.getElementById('btn-submit-password');
+        if (btnSubmitPassword) {
+            btnSubmitPassword.addEventListener('click', async () => {
+                const oldPass = document.getElementById('old-password').value;
+                const newPass = document.getElementById('new-password').value;
+                const confirmPass = document.getElementById('confirm-password').value;
+                const errorEl = document.getElementById('password-error');
+
+                errorEl.style.display = 'none';
+
+                if (!oldPass || !newPass || !confirmPass) {
+                    errorEl.textContent = 'All fields are required';
+                    errorEl.style.display = 'block';
+                    return;
+                }
+
+                if (newPass !== confirmPass) {
+                    errorEl.textContent = 'New passwords do not match';
+                    errorEl.style.display = 'block';
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/auth/change-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...authHeaders },
+                        body: JSON.stringify({ oldPassword: oldPass, newPassword: newPass })
+                    });
+
+                    const json = await res.json();
+                    if (res.ok) {
+                        alert(tr('msg_password_updated'));
+                        document.getElementById('change-password-overlay').classList.add('hidden');
+                        // Clear inputs
+                        document.getElementById('old-password').value = '';
+                        document.getElementById('new-password').value = '';
+                        document.getElementById('confirm-password').value = '';
+                    } else {
+                        errorEl.textContent = json.error;
+                        errorEl.style.display = 'block';
+                    }
+                } catch (err) {
+                    console.error(err);
+                    errorEl.textContent = 'Request failed';
                     errorEl.style.display = 'block';
                 }
-            } catch (err) {
-                console.error(err);
-                errorEl.textContent = 'Request failed';
-                errorEl.style.display = 'block';
-            }
-        });
-    }
+            });
+        }
 
-    // Settings -> Forgot Password Logic
-    const btnShowForgotPass = document.getElementById('btn-show-forgot-pass');
-    const btnBackToChange = document.getElementById('btn-back-to-change');
-    const btnSendResetSettings = document.getElementById('btn-send-reset-settings');
-    const changePassForm = document.getElementById('change-pass-form');
-    const settingsForgotForm = document.getElementById('settings-forgot-form');
+        // Settings -> Forgot Password Logic
+        const btnShowForgotPass = document.getElementById('btn-show-forgot-pass');
+        const btnBackToChange = document.getElementById('btn-back-to-change');
+        const btnSendResetSettings = document.getElementById('btn-send-reset-settings');
+        const changePassForm = document.getElementById('change-pass-form');
+        const settingsForgotForm = document.getElementById('settings-forgot-form');
 
-    if (btnShowForgotPass && btnBackToChange && btnSendResetSettings) {
-        btnShowForgotPass.addEventListener('click', () => {
-            changePassForm.classList.add('hidden');
-            settingsForgotForm.classList.remove('hidden');
+        if (btnShowForgotPass && btnBackToChange && btnSendResetSettings) {
+            btnShowForgotPass.addEventListener('click', () => {
+                changePassForm.classList.add('hidden');
+                settingsForgotForm.classList.remove('hidden');
 
-            // Auto-fill email
-            if (currentUser && currentUser.email) {
-                const emailInput = document.getElementById('settings-forgot-email');
-                emailInput.value = currentUser.email;
-                emailInput.readOnly = true; // Prevent editing since we know who they are
-                emailInput.style.opacity = '0.7';
-            }
-        });
+                // Auto-fill email
+                if (currentUser && currentUser.email) {
+                    const emailInput = document.getElementById('settings-forgot-email');
+                    emailInput.value = currentUser.email;
+                    emailInput.readOnly = true; // Prevent editing since we know who they are
+                    emailInput.style.opacity = '0.7';
+                }
+            });
 
-        btnBackToChange.addEventListener('click', () => {
-            settingsForgotForm.classList.add('hidden');
-            changePassForm.classList.remove('hidden');
-        });
-
-        btnSendResetSettings.addEventListener('click', async () => {
-            const email = document.getElementById('settings-forgot-email').value;
-            const btn = btnSendResetSettings;
-            const originalText = btn.textContent;
-
-            if (!email) { alert("Please enter your email"); return; }
-
-            btn.textContent = 'Sending...';
-            btn.disabled = true;
-
-            try {
-                const res = await fetch('/api/auth/forgot-password', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-                const data = await res.json();
-                alert(data.message);
-
-                // Return to main state
-                document.getElementById('change-password-overlay').classList.add('hidden');
+            btnBackToChange.addEventListener('click', () => {
                 settingsForgotForm.classList.add('hidden');
                 changePassForm.classList.remove('hidden');
-            } catch (err) {
-                alert('Request failed');
-            }
-            btn.textContent = originalText;
-            btn.disabled = false;
-        });
-    }
+            });
 
+            btnSendResetSettings.addEventListener('click', async () => {
+                const email = document.getElementById('settings-forgot-email').value;
+                const btn = btnSendResetSettings;
+                const originalText = btn.textContent;
+
+                if (!email) { alert("Please enter your email"); return; }
+
+                btn.textContent = 'Sending...';
+                btn.disabled = true;
+
+                try {
+                    const res = await fetch('/api/auth/forgot-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+                    const data = await res.json();
+                    alert(data.message);
+
+                    // Return to main state
+                    document.getElementById('change-password-overlay').classList.add('hidden');
+                    settingsForgotForm.classList.add('hidden');
+                    changePassForm.classList.remove('hidden');
+                } catch (err) {
+                    alert('Request failed');
+                }
+                btn.textContent = originalText;
+                btn.disabled = false;
+            });
+        }
+
+    }
 }); // End DOMContentLoaded
