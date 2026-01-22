@@ -96,6 +96,46 @@
             </button>
         </div>
 
+        <div class="stats-grid"
+            style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:20px; margin-bottom: 30px;">
+            <div class="stat-card"
+                style="background:var(--card-bg); padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1);">
+                <div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:8px;">Total Users</div>
+                <div id="stat-users" style="font-size:1.8rem; font-weight:800; color:white;">-</div>
+            </div>
+            <div class="stat-card"
+                style="background:var(--card-bg); padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1);">
+                <div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:8px;">Active (7d)</div>
+                <div id="stat-active" style="font-size:1.8rem; font-weight:800; color:var(--accent-lime);">-</div>
+            </div>
+            <div class="stat-card"
+                style="background:var(--card-bg); padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1);">
+                <div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:8px;">Total Records</div>
+                <div id="stat-records" style="font-size:1.8rem; font-weight:800; color:white;">-</div>
+            </div>
+            <div class="stat-card"
+                style="background:var(--card-bg); padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1);">
+                <div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:8px;">Personas</div>
+                <div id="stat-personas" style="font-size:1.8rem; font-weight:800; color:white;">-</div>
+            </div>
+            <!-- New Metrics -->
+            <div class="stat-card"
+                style="background:var(--card-bg); padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1);">
+                <div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:8px;">Conversion (24h)</div>
+                <div id="stat-conversion" style="font-size:1.8rem; font-weight:800; color:var(--accent-lime);">-</div>
+            </div>
+            <div class="stat-card"
+                style="background:var(--card-bg); padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1);">
+                <div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:8px;">Avg AI Time</div>
+                <div id="stat-ai-time" style="font-size:1.8rem; font-weight:800; color:white;">-</div>
+            </div>
+            <div class="stat-card"
+                style="background:var(--card-bg); padding:20px; border-radius:16px; border:1px solid rgba(255,255,255,0.1);">
+                <div style="color:var(--text-muted); font-size:0.9rem; margin-bottom:8px;">Failures</div>
+                <div id="stat-failures" style="font-size:1.8rem; font-weight:800; color:#ef4444;">-</div>
+            </div>
+        </div>
+
         <div class="admin-card">
             <h3 style="margin-bottom: 16px;">Invite Codes</h3>
             <div id="code-list" class="code-list">
@@ -118,6 +158,24 @@
             const headers = { 'Authorization': `Bearer ${token}` };
             const listEl = document.getElementById('code-list');
             const btnGenerate = document.getElementById('btn-generate');
+
+            async function loadStats() {
+                try {
+                    const res = await fetch('/api/admin/stats', { headers });
+                    if (res.ok) {
+                        const json = await res.json();
+                        const s = json.data;
+                        document.getElementById('stat-users').innerText = s.users;
+                        document.getElementById('stat-active').innerText = s.active_users;
+                        document.getElementById('stat-records').innerText = s.records;
+                        document.getElementById('stat-personas').innerText = s.personas;
+                        // New Metrics
+                        document.getElementById('stat-conversion').innerText = s.conversion_rate;
+                        document.getElementById('stat-ai-time').innerText = s.avg_ai_time;
+                        document.getElementById('stat-failures').innerText = s.upload_errors;
+                    }
+                } catch (e) { console.error(e); }
+            }
 
             async function loadInvites() {
                 try {
@@ -169,6 +227,7 @@
             });
 
             loadInvites();
+            loadStats();
         });
     </script>
 </body>

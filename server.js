@@ -120,6 +120,15 @@ function initializeDatabase() {
         created_at TEXT DEFAULT (datetime('now', 'localtime')),
         FOREIGN KEY (persona_id) REFERENCES personas(id)
     )`);
+
+    // 6. Analytics Events Table
+    db.run(`CREATE TABLE IF NOT EXISTS analytics_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        event_type TEXT, -- 'ai_complete', 'upload_error', 'conversion'
+        meta TEXT, -- JSON string for details
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
 }
 
 function addColumnIfNotExists(table, column, type, callback) {
@@ -215,6 +224,16 @@ app.post('/api/auth/login', (req, res) => {
     });
 });
 
+app.post('/api/events', authenticateToken, (req, res) => {
+    const { event_type, meta } = req.body;
+    db.run("INSERT INTO analytics_events (user_id, event_type, meta) VALUES (?, ?, ?)",
+        [req.user.id, event_type, JSON.stringify(meta || {})],
+        (err) => {
+            if (err) return res.status(500).json({ error: "Log failed" });
+            res.json({ message: "Logged" });
+        });
+});
+
 app.post('/api/admin/invites', authenticateToken, isAdmin, (req, res) => {
     const code = Math.random().toString(36).substring(2, 10).toUpperCase();
     db.run("INSERT INTO invites (code, created_by) VALUES (?, ?)", [code, req.user.id], function (err) {
@@ -227,6 +246,47 @@ app.get('/api/admin/invites', authenticateToken, isAdmin, (req, res) => {
     db.all("SELECT * FROM invites ORDER BY created_at DESC", [], (err, rows) => {
         res.json({ data: rows });
     });
+});
+
+app.get('/api/admin/stats', authenticateToken, isAdmin, async (req, res) => {
+    const getCount = (sql) => new Promise((resolve) => {
+        db.get(sql, [], (err, row) => resolve(row ? row.count : 0));
+    });
+    const getVal = (sql) => new Promise((resolve) => {
+        db.get(sql, [], (err, row) => resolve(row ? row.val : 0));
+    });
+
+    try {
+        const [users, records, personas, invites, active_users, conversion, avg_ai_time, upload_errors] = await Promise.all([
+            getCount("SELECT count(*) as count FROM users"),
+            getCount("SELECT count(*) as count FROM records"),
+            getCount("SELECT count(*) as count FROM personas"),
+            getCount("SELECT count(*) as count FROM invites"),
+            getCount("SELECT count(distinct user_id) as count FROM (SELECT p.user_id FROM records r JOIN personas p ON r.persona_id = p.id WHERE r.created_at > datetime('now', '-7 days'))"),
+            // Conversion: Users who recorded within 24h
+            getCount("SELECT count(distinct u.id) as count FROM users u JOIN personas p ON p.user_id = u.id JOIN records r ON r.persona_id = p.id WHERE r.created_at <= datetime(u.created_at, '+1 day')"),
+            // Avg AI Time
+            getVal("SELECT avg(json_extract(meta, '$.duration')) as val FROM analytics_events WHERE event_type = 'ai_complete'"),
+            // Upload Errors
+            getCount("SELECT count(*) as count FROM analytics_events WHERE event_type = 'upload_error'")
+        ]);
+
+        res.json({
+            data: {
+                users,
+                records,
+                personas,
+                invites,
+                active_users,
+                conversion_rate: users > 0 ? Math.round((conversion / users) * 100) + '%' : '0%',
+                avg_ai_time: avg_ai_time ? Math.round(avg_ai_time) + 'ms' : '-',
+                upload_errors
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Stats failed" });
+    }
 });
 
 
@@ -633,8 +693,15 @@ app.post('/api/analyze', authenticateToken, async (req, res) => {
         const analyzePath = fs.existsSync(origPath) ? origPath : fullPath;
         console.log(`Analyzing image: ${analyzePath} (Original available: ${analyzePath === origPath})`);
 
+        const startTime = Date.now();
+
         try {
             const analysis = await analyzeImage(analyzePath, context, lang);
+            const duration = Date.now() - startTime;
+
+            // Log Analytics
+            db.run("INSERT INTO analytics_events (user_id, event_type, meta) VALUES (?, ?, ?)",
+                [req.user.id, 'ai_complete', JSON.stringify({ duration, success: true })]);
 
             // Extract Score & Bristol
             let healthScore = null;

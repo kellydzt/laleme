@@ -1066,6 +1066,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (err) {
                 console.error(err);
+                // Log Error to Analytics
+                fetch('/api/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...authHeaders },
+                    body: JSON.stringify({ event_type: 'upload_error', meta: { error: err.message } })
+                }).catch(e => console.error("Failed to log error", e));
+
                 alert("Error uploading file. Please try again.");
                 dashboardOverlay.classList.add('hidden');
                 throw err;
