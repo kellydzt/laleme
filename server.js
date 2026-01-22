@@ -211,7 +211,7 @@ app.post('/api/auth/register', async (req, res) => {
 
             const sendVerificationEmail = () => {
                 resend.emails.send({
-                    from: 'onboarding@send.laleme.04010123.xyz',
+                    from: 'onboarding@laleme.04010123.xyz', // Use default or verified domain
                     to: email,
                     subject: 'Verify your Laleme Account',
                     html: `<p>Welcome to Laleme! <a href="${verifyUrl}">Click here to verify your email</a></p>`
