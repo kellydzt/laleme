@@ -136,7 +136,6 @@ db.run(`CREATE TABLE IF NOT EXISTS analytics_events (
         meta TEXT, -- JSON string for details
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
-}
 
 function addColumnIfNotExists(table, column, type, callback) {
     db.all(`PRAGMA table_info(${table})`, (err, rows) => {
