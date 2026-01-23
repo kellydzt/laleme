@@ -124,6 +124,10 @@ db.run(`CREATE TABLE IF NOT EXISTS records (
     addColumnIfNotExists('records', 'health_score', 'TEXT');
     // Migration: Add location_city if missing (For auto-location feature)
     addColumnIfNotExists('records', 'location_city', 'TEXT');
+    // Migration: Add location_district if missing
+    addColumnIfNotExists('records', 'location_district', 'TEXT');
+    // Migration: Add smell if missing
+    addColumnIfNotExists('records', 'smell', 'TEXT');
 });
 
 // 5. Trend Reports Table (Optimization Cache)
@@ -765,9 +769,10 @@ app.put('/api/records/:id', authenticateToken, (req, res) => {
             sensation = ?, 
             symptoms = ?, 
             triggers = ?, 
-            triggers = ?, 
             location_context = ?,
-            location_city = ?
+            location_city = ?,
+            location_district = ?,
+            smell = ?
             WHERE id = ?`;
 
         const params = [
@@ -775,9 +780,10 @@ app.put('/api/records/:id', authenticateToken, (req, res) => {
             sensation,
             JSON.stringify(symptoms || []),
             JSON.stringify(triggers || []),
-            JSON.stringify(triggers || []),
             location_context,
-            req.body.location_city || null, // Allow updating city
+            req.body.location_city || null,
+            req.body.location_district || null,
+            req.body.smell || null,
             id
         ];
 
