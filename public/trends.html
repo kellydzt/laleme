@@ -46,16 +46,7 @@
         }
 
         /* Mode Toggle */
-        .controls-card {
-            background: var(--card-bg);
-            border-radius: var(--radius-md);
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
+        /* Handled by .data-card group */
 
         .mode-toggle {
             background: rgba(0, 0, 0, 0.3);
@@ -117,13 +108,7 @@
 
 
         /* Heatmap Grid */
-        .heatmap-card {
-            background: var(--card-bg);
-            border-radius: var(--radius-lg);
-            padding: 20px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
+        /* Handled by .data-card group */
 
         .heatmap-grid {
             display: grid;
@@ -194,11 +179,257 @@
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             z-index: 999;
+        }
+
+        /* --- UI UPDATE: ELEGANT DARK THEME --- */
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-highlight: rgba(255, 255, 255, 0.12);
+            --neon-accent: #a855f7;
+        }
+
+        /* Unified Card Style */
+        .data-card,
+        .heatmap-card,
+        .controls-card,
+        .stat-card,
+        .chart-card,
+        .insight-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            /* More rounded */
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 24px;
+            margin-bottom: 24px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Subtle Gradient Glow for Cards */
+        .stat-card::before,
+        .chart-card::before,
+        .heatmap-card::before,
+        .insight-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--glass-highlight), transparent);
+            opacity: 0.5;
+        }
+
+        /* Stats Grid Update */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        /* Stat Card Redesign */
+        .stat-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 140px;
+            padding: 24px;
+            border-left: none !important;
+            /* Remove old colored border */
+        }
+
+        .stat-card .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .stat-card .stat-value {
+            font-size: 2.2rem;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 4px;
+            background: linear-gradient(135deg, #fff 0%, #ccc 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-card .stat-label {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card .stat-icon {
+            font-size: 1.2rem;
+            opacity: 0.8;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+        }
+
+        /* Chart Title */
+        .chart-title {
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 20px;
+        }
+
+        /* Insight Cards */
+        .insight-card {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(59, 130, 246, 0.1));
+            border-color: rgba(59, 130, 246, 0.2);
+            padding: 20px;
+        }
+
+
+        /* Statistics Cards */
+        .stats-section {
+            margin-bottom: 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .stat-card .stat-icon {
+            font-size: 1.5rem;
+            opacity: 0.9;
+        }
+
+        .stat-card .stat-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: white;
+        }
+
+        .stat-card .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .stat-card.primary {
+            border-left: 3px solid var(--accent-lime);
+        }
+
+        .stat-card.warning {
+            border-left: 3px solid #f59e0b;
+        }
+
+        .stat-card.danger {
+            border-left: 3px solid #ef4444;
+        }
+
+        .stat-card.info {
+            border-left: 3px solid var(--accent-blue);
+        }
+
+        /* Charts */
+        .chart-card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .chart-title {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 200px;
+        }
+
+        /* Heatmap Elegance */
+        .heatmap-grid {
+            gap: 8px;
+        }
+
+        .day-cell {
+            border-radius: 8px;
+            /* Softer corners */
+            font-weight: 700;
+            font-size: 0.8rem;
+            transition: transform 0.2s;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+        }
+
+        /* New Grade Colors (Pastel/Vibrant Mix) */
+        .day-cell.good {
+            background: #d9f99d;
+            color: #1a2e05;
+            box-shadow: 0 2px 8px rgba(217, 249, 157, 0.2);
+        }
+
+        .day-cell.warn {
+            background: #fcd34d;
+            color: #451a03;
+            box-shadow: 0 2px 8px rgba(252, 211, 77, 0.2);
+        }
+
+        .day-cell.bad {
+            background: #f87171;
+            color: #450a0a;
+            box-shadow: 0 2px 8px rgba(248, 113, 113, 0.2);
+        }
+
+        /* Period Select */
+        .period-select {
+            background: rgba(0, 0, 0, 0.2);
+            border-color: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+        }
+
+        /* Mode Toggle */
+        .mode-toggle {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 16px;
+            padding: 4px;
+        }
+
+        .mode-btn {
+            border-radius: 12px;
+            padding: 10px;
+            font-size: 0.95rem;
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
         }
     </style>
 </head>
@@ -244,6 +475,67 @@
                 <span style="display:flex; align-items:center; gap:4px;"><span
                         style="width:10px; height:10px; background:#ef4444; border-radius:2px;"></span> <span
                         data-i18n="legend_bad">Bad</span></span>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div id="stats-section" class="stats-section hidden">
+            <h3
+                style="margin:20px 0 10px 0; display:flex; align-items:center; gap:8px; font-size: 0.9rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px;">
+                <i class="ph-fill ph-chart-bar" style="color:var(--accent-lime);"></i>
+                <span data-i18n="stats_overview">Data Overview</span>
+            </h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label" data-i18n="stat_total_label">Total logs</span>
+                        <span class="stat-icon">💩</span>
+                    </div>
+                    <span class="stat-value" id="stat-total">0</span>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label" data-i18n="stat_busiest_label">Most active day</span>
+                        <span class="stat-icon">📅</span>
+                    </div>
+                    <span class="stat-value" id="stat-busiest" style="font-size: 1.5rem;">-</span>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label" data-i18n="stat_constipation_label">Constipation days</span>
+                        <span class="stat-icon">🧱</span>
+                    </div>
+                    <span class="stat-value" id="stat-constipation">0</span>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label" data-i18n="stat_diarrhea_label">Diarrhea days</span>
+                        <span class="stat-icon">💧</span>
+                    </div>
+                    <span class="stat-value" id="stat-diarrhea">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bristol Trend Chart -->
+        <div id="chart-bristol" class="chart-card hidden">
+            <div class="chart-title">
+                <i class="ph-fill ph-chart-bar"></i>
+                <span data-i18n="chart_daily_count">Daily Count</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="bristol-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Grade Distribution Chart -->
+        <div id="chart-grade" class="chart-card hidden">
+            <div class="chart-title">
+                <i class="ph-fill ph-chart-pie-slice"></i>
+                <span data-i18n="chart_grade_dist">Health Score Distribution</span>
+            </div>
+            <div class="chart-container" style="height: 180px; display: flex; justify-content: center;">
+                <canvas id="grade-chart"></canvas>
             </div>
         </div>
 
@@ -303,7 +595,16 @@
                 no_data_available: 'No data available.',
                 retry_btn: 'Retry Analysis',
                 invalid_data: 'Analysis Error',
-                invalid_data_msg: 'The analysis data is corrupted. Click retry to regenerate.'
+                invalid_data_msg: 'The analysis data is corrupted. Click retry to regenerate.',
+                stats_overview: 'Data Overview',
+                stat_total_label: 'Total logs',
+                stat_busiest_label: 'Most active day',
+                stat_constipation_label: 'Constipation days',
+                stat_diarrhea_label: 'Diarrhea days',
+                chart_daily_count: 'Daily Count',
+                chart_grade_dist: 'Health Score Distribution',
+                healthy_ratio: 'Healthy ratio',
+                day_names: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
             },
             zh: {
                 back_home: '首页',
@@ -334,7 +635,16 @@
                 no_data_available: '暂无数据',
                 retry_btn: '重新分析',
                 invalid_data: '分析数据异常',
-                invalid_data_msg: '分析数据已损坏，点击重试以重新生成。'
+                invalid_data_msg: '分析数据已损坏，点击重试以重新生成。',
+                stats_overview: '数据概览',
+                stat_total_label: '记录次数',
+                stat_busiest_label: '最活跃日',
+                stat_constipation_label: '便秘天数',
+                stat_diarrhea_label: '腹泻天数',
+                chart_daily_count: '每日次数',
+                chart_grade_dist: '健康评分分布',
+                healthy_ratio: '健康占比',
+                day_names: ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
             }
         };
 
@@ -588,7 +898,77 @@
                     heatmapGrid.innerHTML = `<div style="color:var(--text-muted); font-size:0.8rem; grid-column:1/-1;">${t.no_logs}</div>`;
                 }
 
-                // 3. AI Insights
+                // === 3. Statistics Cards ===
+                const stats = data.stats || {};
+                const statsSection = document.getElementById('stats-section');
+                const chartBristol = document.getElementById('chart-bristol');
+                const chartGrade = document.getElementById('chart-grade');
+
+                if (logs.length > 0 && stats.total) {
+                    statsSection.classList.remove('hidden');
+                    chartBristol.classList.remove('hidden');
+                    chartGrade.classList.remove('hidden');
+
+                    // Render stat values
+                    document.getElementById('stat-total').textContent = stats.total;
+                    document.getElementById('stat-constipation').textContent = stats.constipationDays || 0;
+                    document.getElementById('stat-diarrhea').textContent = stats.diarrheaDays || 0;
+
+                    // Format busiest day
+                    if (stats.busiestDay) {
+                        const bDate = new Date(stats.busiestDay);
+                        const dayName = t.day_names[bDate.getDay()];
+                        document.getElementById('stat-busiest').innerHTML = `${dayName}<span style="font-size:0.9rem; opacity:0.7;"> (${stats.busiestCount}次)</span>`;
+                    } else {
+                        document.getElementById('stat-busiest').textContent = '-';
+                    }
+
+                    // Render Daily Count Chart
+                    // 如果后端没有返回 chartData，从 logs 计算
+                    let chartDataToUse = stats.chartData;
+                    if (!chartDataToUse || chartDataToUse.length === 0) {
+                        // 从 logs 手动计算每日次数
+                        const dailyCounts = {};
+                        logs.forEach(log => {
+                            // 只取日期部分（处理 YYYY-MM-DD HH:MM:SS 格式）
+                            const dateOnly = (log.date || '').split(' ')[0].split('T')[0];
+                            if (dateOnly) {
+                                dailyCounts[dateOnly] = (dailyCounts[dateOnly] || 0) + 1;
+                            }
+                        });
+                        chartDataToUse = Object.keys(dailyCounts).sort().map(date => ({
+                            date,
+                            count: dailyCounts[date]
+                        }));
+                    } else {
+                        // 后端返回的 chartData 也需要确保日期格式正确
+                        chartDataToUse = chartDataToUse.map(item => ({
+                            ...item,
+                            date: (item.date || '').split(' ')[0].split('T')[0]
+                        }));
+                        // 如果还有重复日期，需要合并
+                        const merged = {};
+                        chartDataToUse.forEach(item => {
+                            if (merged[item.date]) {
+                                merged[item.date].count += item.count;
+                            } else {
+                                merged[item.date] = { ...item };
+                            }
+                        });
+                        chartDataToUse = Object.values(merged).sort((a, b) => a.date.localeCompare(b.date));
+                    }
+                    console.log('Chart Data (processed):', chartDataToUse);
+                    renderBristolChart(chartDataToUse);
+
+                    // Render Grade Distribution Chart
+                    renderGradeChart(stats.gradeDistribution || {});
+                } else {
+                    statsSection.classList.add('hidden');
+                    chartBristol.classList.add('hidden');
+                    chartGrade.classList.add('hidden');
+                }
+
+                // 4. AI Insights
                 insightsContainer.innerHTML = '';
 
                 // Check for invalid analysis data
@@ -724,6 +1104,153 @@
                 } catch (e) {
                     console.error('Failed to delete cache:', e);
                 }
+            }
+
+            // Chart instances (for cleanup)
+            let bristolChartInstance = null;
+            let gradeChartInstance = null;
+
+            // Render Daily Count Bar Chart
+            function renderBristolChart(chartData) {
+                const ctx = document.getElementById('bristol-chart').getContext('2d');
+
+                // Destroy previous chart
+                if (bristolChartInstance) {
+                    bristolChartInstance.destroy();
+                }
+
+                const labels = chartData.map(d => {
+                    const date = new Date(d.date);
+                    return `${date.getMonth() + 1}/${date.getDate()}`;
+                });
+                const counts = chartData.map(d => d.count);
+
+                // Create Gradients
+                const gradientRed = ctx.createLinearGradient(0, 0, 0, 300);
+                gradientRed.addColorStop(0, 'rgba(239, 68, 68, 0.8)');
+                gradientRed.addColorStop(1, 'rgba(239, 68, 68, 0.1)');
+
+                const gradientOrange = ctx.createLinearGradient(0, 0, 0, 300);
+                gradientOrange.addColorStop(0, 'rgba(245, 158, 11, 0.8)');
+                gradientOrange.addColorStop(1, 'rgba(245, 158, 11, 0.1)');
+
+                const gradientGreen = ctx.createLinearGradient(0, 0, 0, 300);
+                gradientGreen.addColorStop(0, 'rgba(163, 230, 53, 0.8)');
+                gradientGreen.addColorStop(1, 'rgba(163, 230, 53, 0.1)');
+
+                bristolChartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: appLang === 'zh' ? '次数' : 'Count',
+                            data: counts,
+                            backgroundColor: counts.map(c => {
+                                if (c >= 3) return gradientRed;
+                                if (c === 2) return gradientOrange;
+                                return gradientGreen;
+                            }),
+                            borderColor: counts.map(c => {
+                                if (c >= 3) return 'rgba(239, 68, 68, 1)';
+                                if (c === 2) return 'rgba(245, 158, 11, 1)';
+                                return 'rgba(163, 230, 53, 1)';
+                            }),
+                            borderWidth: 0,
+                            borderRadius: 8,
+                            barPercentage: 0.6,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(0,0,0,0.8)',
+                                titleColor: '#fff',
+                                bodyColor: '#ccc',
+                                cornerRadius: 8,
+                                displayColors: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1,
+                                    color: 'rgba(255,255,255,0.4)',
+                                    font: { size: 10 }
+                                },
+                                grid: {
+                                    color: 'rgba(255,255,255,0.03)',
+                                    drawBorder: false
+                                },
+                                title: {
+                                    display: true,
+                                    text: appLang === 'zh' ? '次数' : 'Count',
+                                    color: 'rgba(255,255,255,0.3)',
+                                    font: { size: 10 }
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    color: 'rgba(255,255,255,0.4)',
+                                    font: { size: 10 }
+                                },
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Render Grade Distribution Doughnut Chart  
+            function renderGradeChart(gradeDistribution) {
+                const ctx = document.getElementById('grade-chart').getContext('2d');
+
+                if (gradeChartInstance) {
+                    gradeChartInstance.destroy();
+                }
+
+                const total = Object.values(gradeDistribution).reduce((a, b) => a + b, 0);
+                if (total === 0) {
+                    document.getElementById('chart-grade').classList.add('hidden');
+                    return;
+                }
+
+                gradeChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['A (优秀)', 'B (良好)', 'C (一般)', 'D (较差)'],
+                        datasets: [{
+                            data: [
+                                gradeDistribution.A || 0,
+                                gradeDistribution.B || 0,
+                                gradeDistribution.C || 0,
+                                gradeDistribution.D || 0
+                            ],
+                            backgroundColor: ['#a3e635', '#f59e0b', '#fb923c', '#ef4444'],
+                            borderWidth: 0,
+                            hoverOffset: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '60%',
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    color: 'rgba(255,255,255,0.7)',
+                                    padding: 15,
+                                    usePointStyle: true,
+                                    pointStyle: 'circle'
+                                }
+                            }
+                        }
+                    }
+                });
             }
         });
     </script>

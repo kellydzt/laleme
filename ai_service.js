@@ -189,8 +189,8 @@ async function analyzeTrends(data, lang = 'en') {
   }
 
   try {
-    // Use gemini-3-flash-preview as requested
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+    // Use gemini-3-pro for trend analysis
+    const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
 
     let prompt = "";
 
@@ -204,6 +204,8 @@ async function analyzeTrends(data, lang = 'en') {
         - effort: 排便费力程度 (1=轻松, 2=正常, 3=困难, 4=受阻)
         - sensation: 排空感 (complete=完全, incomplete=未排净)
         - context: 场景 (home, work, hotel, public)
+        - smell: 气味 (Normal=正常, Strong=刺鼻, Sour=酸臭, Unbearable=恶臭)
+        - volume: 分量估计 (如有)
         - features: AI分析的微观特征 (颜色、质地、是否有粘液/血)
 
         任务:
@@ -212,12 +214,13 @@ async function analyzeTrends(data, lang = 'en') {
            - 饮食: '酒精' 是否导致第二天的 6/7 型？'辛辣食物' 是否导致 '灼烧感'？
            - 场景: 是否在 'work' 或 'public' 场景下更容易出现 'incomplete' (排不净) 或 'effort' (费力) 升高？
            - 努力度: 高努力度 (3-4) 是否总是伴随干硬大便 (1-2型)？
+           - 气味: Strong/Sour/Unbearable 气味是否与特定食物或形态相关？
         3. 健康评分 (A-D): 
-           - A+/A: 形态主要为 3-4型，且无出血/粘液。
-           - B: 偶尔 1-2 或 5型。
-           - C: 频繁的便秘/腹泻，或频繁的排不净感。
-           - D: 出现血、持续的粘液、或长期的极端形态。
-        4. 被动建议: 基于发现给出简短建议 (例如: "在公司时请多喝水", "注意乳制品摄入").
+           - A+/A: 形态主要为 3-4型，且无出血/粘液，气味正常。
+           - B: 偶尔 1-2 或 5型，或偶尔有异味。
+           - C: 频繁的便秘/腹泻，或频繁的排不净感，或持续的异味。
+           - D: 出现血、持续的粘液、长期的极端形态、或长期恶臭。
+        4. 被动建议: 基于发现给出简短建议 (例如: "在公司时请多喝水", "注意乳制品摄入", "酸臭味可能与消化不良有关").
 
         输出格式 (仅JSON):
         请保留 Key 为英文，Value 为中文。
@@ -245,6 +248,8 @@ async function analyzeTrends(data, lang = 'en') {
         - effort: Straining level (1=Easy, 2=Normal, 3=Hard, 4=Blocked)
         - sensation: Evacuation sensation (complete vs incomplete)
         - context: Location (home, work, hotel, public)
+        - smell: Odor (Normal, Strong, Sour, Unbearable)
+        - volume: Estimated volume (if available)
         - features: AI analyzed textures (color, blood, mucus, etc.)
 
         TASKS:
@@ -253,11 +258,12 @@ async function analyzeTrends(data, lang = 'en') {
            - Diet: Does 'Alcohol' lead to Type 6/7? Does 'Spicy' lead to burning?
            - Context: Is 'incomplete' sensation or high 'effort' more common at 'work' or 'public' restrooms?
            - Effort: Does high effort (3-4) align with hard stool?
+           - Smell: Is Strong/Sour/Unbearable odor correlated with specific foods or stool types?
         3. GRADING (A-D):
-           - A+/A = Mostly Type 3-4, no blood/mucus.
-           - B = Occasional 1-2 or 5.
-           - C = Frequent issues or frequent 'incomplete' sensation.
-           - D = Blood, mucus, or chronic extreme types.
+           - A+/A = Mostly Type 3-4, no blood/mucus, normal smell.
+           - B = Occasional 1-2 or 5, or occasional abnormal smell.
+           - C = Frequent issues or frequent 'incomplete' sensation, or persistent smell issues.
+           - D = Blood, mucus, chronic extreme types, or persistent foul odor.
 
         OUTPUT SCHEMA (JSON ONLY):
         {

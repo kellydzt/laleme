@@ -996,7 +996,7 @@ app.post('/api/analyze/trends', authenticateToken, (req, res) => {
 
         function fetchLogsAndProcess(callback) {
             const sql = `
-                SELECT created_at, stool_type, effort, symptoms, triggers, health_score, sensation, location_context, ai_analysis 
+                SELECT created_at, stool_type, effort, symptoms, triggers, health_score, sensation, location_context, smell, ai_analysis 
             FROM records 
                 WHERE persona_id = ?
                 AND created_at BETWEEN ? AND ?
@@ -1027,13 +1027,17 @@ app.post('/api/analyze/trends', authenticateToken, (req, res) => {
                     } catch (e) { }
 
                     return {
-                        date: r.created_at.split('T')[0],
+                        // 同时支持 ISO 格式 (2026-01-20T11:00:34) 和空格格式 (2026-01-20 11:00:34)
+                        date: r.created_at.split('T')[0].split(' ')[0],
+                        time: (r.created_at.split('T')[1] || r.created_at.split(' ')[1] || '00:00').substring(0, 5),
                         bristol: r.stool_type,
                         health_score: r.health_score,
                         effort: r.effort,
-                        sensation: r.sensation, // New
-                        context: r.location_context, // New
-                        features: aiDetails, // New AI extraction
+                        sensation: r.sensation,
+                        context: r.location_context,
+                        smell: r.smell,
+                        volume: aiDetails.volume,
+                        features: aiDetails,
                         tags: [
                             ...(r.symptoms ? JSON.parse(r.symptoms) : []),
                             ...(r.triggers ? JSON.parse(r.triggers) : [])
@@ -1041,10 +1045,93 @@ app.post('/api/analyze/trends', authenticateToken, (req, res) => {
                     };
                 });
 
+                // === 计算统计数据 ===
                 const total = logs.length;
-                const avgBristol = total > 0 ? (logs.reduce((sum, r) => sum + (r.bristol || 0), 0) / total).toFixed(1) : 0;
 
-                callback(logs, { total, avgBristol });
+                // 按日期分组统计
+                const dailyCounts = {};
+                const dailyBristol = {};
+                logs.forEach(log => {
+                    dailyCounts[log.date] = (dailyCounts[log.date] || 0) + 1;
+                    if (!dailyBristol[log.date]) dailyBristol[log.date] = [];
+                    dailyBristol[log.date].push(log.bristol);
+                });
+
+                // 最活跃日
+                let busiestDay = null;
+                let busiestCount = 0;
+                Object.entries(dailyCounts).forEach(([date, count]) => {
+                    if (count > busiestCount) {
+                        busiestCount = count;
+                        busiestDay = date;
+                    }
+                });
+
+                // 便秘天数 (Bristol 1-2)
+                const constipationDays = Object.entries(dailyBristol).filter(([_, bristols]) =>
+                    bristols.some(b => b <= 2)
+                ).length;
+
+                // 腹泻天数 (Bristol 6-7)
+                const diarrheaDays = Object.entries(dailyBristol).filter(([_, bristols]) =>
+                    bristols.some(b => b >= 6)
+                ).length;
+
+                // 平均 Bristol
+                const avgBristol = total > 0 ? (logs.reduce((sum, r) => sum + (r.bristol || 4), 0) / total).toFixed(1) : 0;
+
+                // 健康比例 (Bristol 3-5)
+                const healthyCount = logs.filter(r => r.bristol >= 3 && r.bristol <= 5).length;
+                const healthyRatio = total > 0 ? Math.round((healthyCount / total) * 100) : 0;
+
+                // 平均费力程度
+                const effortLogs = logs.filter(r => r.effort);
+                const avgEffort = effortLogs.length > 0
+                    ? (effortLogs.reduce((sum, r) => sum + r.effort, 0) / effortLogs.length).toFixed(1)
+                    : null;
+
+                // 排净率
+                const sensationLogs = logs.filter(r => r.sensation);
+                const completeCount = sensationLogs.filter(r => r.sensation === 'complete').length;
+                const completeRatio = sensationLogs.length > 0
+                    ? Math.round((completeCount / sensationLogs.length) * 100)
+                    : null;
+
+                // 评分分布
+                const gradeDistribution = { A: 0, B: 0, C: 0, D: 0 };
+                logs.forEach(log => {
+                    if (log.health_score) {
+                        const grade = log.health_score.charAt(0).toUpperCase();
+                        if (gradeDistribution[grade] !== undefined) {
+                            gradeDistribution[grade]++;
+                        }
+                    }
+                });
+
+                // 每日数据用于图表
+                const chartData = Object.keys(dailyCounts).sort().map(date => ({
+                    date,
+                    count: dailyCounts[date],
+                    avgBristol: dailyBristol[date].length > 0
+                        ? (dailyBristol[date].reduce((a, b) => a + b, 0) / dailyBristol[date].length).toFixed(1)
+                        : null
+                }));
+
+                const statistics = {
+                    total,
+                    avgBristol: parseFloat(avgBristol),
+                    busiestDay,
+                    busiestCount,
+                    constipationDays,
+                    diarrheaDays,
+                    healthyRatio,
+                    avgEffort: avgEffort ? parseFloat(avgEffort) : null,
+                    completeRatio,
+                    gradeDistribution,
+                    chartData
+                };
+
+                callback(logs, statistics);
             });
         }
 
