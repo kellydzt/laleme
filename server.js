@@ -1087,6 +1087,28 @@ app.post('/api/analyze/trends', authenticateToken, (req, res) => {
     });
 });
 
+// 6. Delete Trend Cache (for retry functionality)
+app.delete('/api/analyze/trends/cache', authenticateToken, (req, res) => {
+    const { startDate, endDate, persona_id } = req.body;
+
+    if (!startDate || !endDate || !persona_id) {
+        return res.status(400).json({ error: "Missing required parameters" });
+    }
+
+    // Verify ownership
+    db.get("SELECT id FROM personas WHERE id = ? AND user_id = ?", [persona_id, req.user.id], (err, row) => {
+        if (err || !row) return res.status(403).json({ error: "Access denied" });
+
+        db.run(`DELETE FROM trend_reports WHERE persona_id = ? AND start_date = ? AND end_date = ?`,
+            [persona_id, startDate, endDate],
+            function (err) {
+                if (err) return res.status(500).json({ error: "Failed to delete cache" });
+                res.json({ message: "Cache deleted", deleted: this.changes > 0 });
+            }
+        );
+    });
+});
+
 // Start server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);

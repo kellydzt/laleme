@@ -8,6 +8,11 @@
     <title>Trend Analysis - Laleme</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <!-- PWA Configuration -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#a855f7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <!-- Fonts: System Default -->
     <!-- Removed Google Fonts -->
     <link rel="stylesheet" href="style.css">
@@ -295,7 +300,10 @@
                 need_more_data: 'Need More Data',
                 need_more_data_msg: 'Logged {N}/3 times. Keep tracking!',
                 no_analysis: 'No Analysis',
-                no_data_available: 'No data available.'
+                no_data_available: 'No data available.',
+                retry_btn: 'Retry Analysis',
+                invalid_data: 'Analysis Error',
+                invalid_data_msg: 'The analysis data is corrupted. Click retry to regenerate.'
             },
             zh: {
                 back_home: '首页',
@@ -323,7 +331,10 @@
                 need_more_data: '数据不足',
                 need_more_data_msg: '当前记录 {N}/3 次。请继续记录！',
                 no_analysis: '暂无分析',
-                no_data_available: '暂无数据'
+                no_data_available: '暂无数据',
+                retry_btn: '重新分析',
+                invalid_data: '分析数据异常',
+                invalid_data_msg: '分析数据已损坏，点击重试以重新生成。'
             }
         };
 
@@ -493,8 +504,7 @@
                     if (!res.ok) throw new Error(await res.text());
                     const json = await res.json();
                     if (json.cached) console.log("Serving from Cache!");
-                    if (json.cached) console.log("Serving from Cache!");
-                    renderData(json); // Pass full object
+                    renderData(json, startDate, endDate); // Pass full object with dates
 
                 } catch (err) {
                     console.error(err);
@@ -511,11 +521,27 @@
                 loading.classList.add('hidden');
             }
 
-            function renderData(dataStr) {
+            // Store current period for retry
+            let currentStartDate = null;
+            let currentEndDate = null;
+
+            function renderData(dataStr, startDate, endDate) {
+                currentStartDate = startDate;
+                currentEndDate = endDate;
+
                 let data;
                 try { data = typeof dataStr === 'string' ? JSON.parse(dataStr) : dataStr; } catch (e) { console.error(e); return; }
 
-                const analysis = data.analysis || {};
+                // Handle double-serialized or string analysis
+                let analysis = data.analysis || {};
+                if (typeof analysis === 'string') {
+                    try {
+                        analysis = JSON.parse(analysis);
+                    } catch (e) {
+                        console.error('Failed to parse analysis string:', e);
+                        analysis = { _invalid: true };
+                    }
+                }
                 const logs = data.logs || [];
 
                 // 1. Grade (New A-D Logic)
@@ -565,7 +591,13 @@
                 // 3. AI Insights
                 insightsContainer.innerHTML = '';
 
-                if (data.analysis) {
+                // Check for invalid analysis data
+                if (analysis._invalid || (data.analysis && !analysis.summary)) {
+                    renderRetryCard();
+                    return;
+                }
+
+                if (data.analysis && analysis.summary) {
                     // -- SUMMARY CARD --
                     const summaryCard = document.createElement('div');
                     summaryCard.className = 'data-card'; // Reuse new style
@@ -631,6 +663,66 @@
                         </div>
                     `;
                     insightsContainer.appendChild(card);
+                }
+            }
+
+            // Render retry card for invalid data
+            function renderRetryCard() {
+                const card = document.createElement('div');
+                card.className = 'data-card';
+                card.style.borderColor = '#ef4444';
+                card.style.background = 'rgba(239, 68, 68, 0.1)';
+                card.style.gridTemplateColumns = '40px 1fr';
+                card.innerHTML = `
+                    <div style="font-size:1.5rem; color:#ef4444; display:flex; justify-content:center;">
+                        <i class="ph-fill ph-warning-circle"></i>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom:4px; color:#ef4444;">${t.invalid_data}</h4>
+                        <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:12px;">${t.invalid_data_msg}</p>
+                        <button id="retry-analysis-btn" style="
+                            background: var(--accent-purple);
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 8px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                        ">
+                            <i class="ph-bold ph-arrow-clockwise"></i> ${t.retry_btn}
+                        </button>
+                    </div>
+                `;
+                insightsContainer.appendChild(card);
+
+                // Add click handler for retry
+                document.getElementById('retry-analysis-btn').addEventListener('click', async () => {
+                    if (!currentStartDate || !currentEndDate) return;
+                    await deleteCache(currentStartDate, currentEndDate);
+                    loadTrends(currentStartDate, currentEndDate);
+                });
+            }
+
+            // Delete cached analysis
+            async function deleteCache(startDate, endDate) {
+                try {
+                    await fetch('/api/analyze/trends/cache', {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            startDate,
+                            endDate,
+                            persona_id: personaId
+                        })
+                    });
+                } catch (e) {
+                    console.error('Failed to delete cache:', e);
                 }
             }
         });

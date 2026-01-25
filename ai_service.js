@@ -280,7 +280,21 @@ async function analyzeTrends(data, lang = 'en') {
     const response = await result.response;
     let text = response.text();
     text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return text;
+
+    // 解析为 JSON 对象再返回，确保前端可以正确访问 summary 等字段
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      console.error("Failed to parse AI response as JSON:", e);
+      // 如果解析失败，返回带有默认结构的对象
+      return {
+        grade: "B",
+        summary: text, // 将原始文本作为 summary
+        correlations: [],
+        alerts: [],
+        trends: []
+      };
+    }
   } catch (error) {
     console.error("Trend Analysis Error:", error);
     return mockTrendAnalysis();
@@ -288,13 +302,14 @@ async function analyzeTrends(data, lang = 'en') {
 }
 
 function mockTrendAnalysis() {
-  return JSON.stringify({
+  // 返回对象而不是字符串，与主流程一致
+  return {
     grade: "B",
-    summary: "Mock Analysis: Everything looks stable.",
+    summary: "[测试模式] 未配置 AI API 密钥，显示模拟数据。请在 .env 文件中设置 GEMINI_API_KEY。",
     correlations: [],
     alerts: [],
     trends: []
-  });
+  };
 }
 
 module.exports = { analyzeImage, analyzeTrends };

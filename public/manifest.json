@@ -1,0 +1,35 @@
+{
+    "name": "拉了么 - 健康追踪",
+    "short_name": "拉了么",
+    "description": "AI 驱动的肠道健康追踪应用",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#1a1a2e",
+    "theme_color": "#a855f7",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "favicon-32.png",
+            "sizes": "32x32",
+            "type": "image/png"
+        },
+        {
+            "src": "icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "health",
+        "medical",
+        "lifestyle"
+    ],
+    "lang": "zh-CN"
+}
